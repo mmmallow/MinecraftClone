@@ -15,11 +15,11 @@ public:
     void Draw();
 
 
-    bool is_jumping;
-    Vector3 size;
+    bool is_grounded = false;
+    Vector3 size = {1.0f, 2.0f, 1.0f};
     Vector3 position;
-    Vector3 velocity;
-    Vector3 dir;
+    Vector3 velocity = { 0 };
+    Vector3 dir = { 0 };
 
     const float MAX_SPEED = 10.0f;
     const float JUMP_FORCE = 10.0f;
@@ -28,7 +28,7 @@ public:
     const float AIR_DRAG = 0.78f;
     const float CONTROL = 15.0f;
 
-    const float STAND_HEIGHT = 1.0f;
+    const float STAND_HEIGHT = 0.5f;
     const float BOTTOM_HEIGHT = 0.0f;
 
     const float gravity = 32.0f;
@@ -42,7 +42,7 @@ public:
 
 private:
     void UpdateCameraFPS();
-    void UpdateBody(float rot, char side, char forward, bool jump_pressed);
+    void UpdateBody(float dt, float rot, char side, char forward, bool jump_pressed);
 };
 
 #endif // !PLAYER_H

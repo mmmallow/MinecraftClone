@@ -2,6 +2,7 @@
 #include <raymath.h>
 
 Player::Player(Vector3 pos) {
+    position = pos;
     camera.position = { pos.x, pos.y + BOTTOM_HEIGHT + head_lerp, pos.z };
     camera.fovy = 60.0f;
     camera.projection = CAMERA_PERSPECTIVE;
@@ -26,7 +27,7 @@ void Player::Update (float dt) {
 
     char sideway = (IsKeyDown(KEY_D) - IsKeyDown(KEY_A));
     char forward = (IsKeyDown(KEY_W) - IsKeyDown(KEY_S));
-    UpdateBody(look_rotation.x, sideway, forward, IsKeyPressed(KEY_SPACE));
+    UpdateBody(dt, look_rotation.x, sideway, forward, IsKeyPressed(KEY_SPACE));
 
     head_lerp = Lerp(head_lerp, STAND_HEIGHT, 20.0f*dt);
     camera.position = (Vector3){
@@ -35,7 +36,7 @@ void Player::Update (float dt) {
         position.z,
     };
 
-    if (!is_jumping && ((forward != 0) || (sideway != 0))) {
+    if (is_grounded && ((forward != 0) || (sideway != 0))) {
         head_timer += dt * 3.0f;
         walk_lerp = Lerp(walk_lerp, 1.0f, 10.0f*dt);
         camera.fovy = Lerp(camera.fovy, 55.0f, 5.0f*dt);
@@ -49,6 +50,8 @@ void Player::Update (float dt) {
     lean.y = Lerp(lean.y, forward*0.015f, 10.0f*dt);
 
     UpdateCameraFPS();
+
+    is_grounded = false;
 }
 
 void Player::UpdateCameraFPS() {
@@ -86,17 +89,16 @@ void Player::UpdateCameraFPS() {
     camera.target = Vector3Add(camera.position, pitch);
 }
 
-void Player::UpdateBody(float rot, char side, char forward, bool jump_pressed) {
+void Player::UpdateBody(float dt, float rot, char side, char forward, bool jump_pressed) {
     Vector2 input = (Vector2){ (float)side, (float)-forward };
 
     if ((side != 0) && (forward != 0)) input = Vector2Normalize(input);
 
-    float dt = GetFrameTime();
-    if (is_jumping) velocity.y -= gravity*dt;
+    velocity.y -= gravity*dt;
 
-    if (!is_jumping && jump_pressed) {
+    if (is_grounded && jump_pressed) {
         velocity.y = JUMP_FORCE;
-        is_jumping = true;
+        is_grounded = false;
     }
 
     Vector3 front = (Vector3){ sinf(rot), 0.0f, cosf(rot) };
@@ -105,7 +107,7 @@ void Player::UpdateBody(float rot, char side, char forward, bool jump_pressed) {
     Vector3 desired_dir = (Vector3){ input.x*right.x + input.y*front.x, 0.0f, input.x*right.z + input.y*front.z, };
     dir = Vector3Lerp(dir, desired_dir, CONTROL*dt);
 
-    float decel = (!is_jumping ? FRICTION : AIR_DRAG);
+    float decel = (is_grounded ? FRICTION : AIR_DRAG);
     Vector3 hvel = (Vector3){ velocity.x*decel, 0.0f, velocity.z*decel };
 
     float hvel_length = Vector3Length(hvel);
@@ -122,10 +124,4 @@ void Player::UpdateBody(float rot, char side, char forward, bool jump_pressed) {
     position.x += velocity.x*dt;
     position.y += velocity.y*dt;
     position.z += velocity.z*dt;
-
-    if (position.y <= 0.0f) {
-        position.y = 0.0f;
-        velocity.y = 0.0f;
-        is_jumping = false;
-    }
 }
