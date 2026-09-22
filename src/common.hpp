@@ -11,9 +11,18 @@ enum BlockType {
     AIR,
 };
 
+struct BlockTexture {
+    Vector2 size = {32.0f, 32.0f};
+    Vector2 front;
+    Vector2 back;
+    Vector2 top;
+    Vector2 bottom;
+    Vector2 right;
+    Vector2 left;
+};
+
 struct Block {
     Vector3 position;
-    Rectangle tex_pos;
     BlockType type = AIR;
     bool is_solid = false;
 };

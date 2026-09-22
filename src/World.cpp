@@ -5,20 +5,21 @@ World::World (Player& player)
 : player (player)
 {
     texture_atlas = LoadTexture("assets/tex_atlas.png");
+    MapBlockTextures();
 
     for (int i = -5; i < 5; i++) {
         for (int j = -5; j < 5; j++) {
-            blocks.push_back({{i,-1.0f,j}, { 16.0f, 0.0f, 16.0f, 16.0f }, DIRT, true});
+            blocks.push_back({{i,-1.0f,j}, GRASS, true});
         }
     }
-    blocks.push_back({{3.0f, 0.0f, 3.0f}, { 16.0f, 0.0f, 16.0f, 16.0f }, DIRT, true});
-    blocks.push_back({{4.0f, 1.0f, 3.0f}, { 16.0f, 0.0f, 16.0f, 16.0f }, DIRT, true});
+    blocks.push_back({{3.0f, 0.0f, 3.0f}, GRASS, true});
+    blocks.push_back({{4.0f, 1.0f, 3.0f}, GRASS, true});
 
-    blocks.push_back({{-2.0f, 0.0f, -2.0f}, { 16.0f, 0.0f, 16.0f, 16.0f }, DIRT, true});
-    blocks.push_back({{-2.0f, 1.0f, -2.0f}, { 16.0f, 0.0f, 16.0f, 16.0f }, DIRT, true});
-    blocks.push_back({{-4.0f, 0.0f, -2.0f}, { 16.0f, 0.0f, 16.0f, 16.0f }, DIRT, true});
-    blocks.push_back({{-4.0f, 1.0f, -2.0f}, { 16.0f, 0.0f, 16.0f, 16.0f }, DIRT, true});
-    blocks.push_back({{-3.0f, 2.0f, -2.0f}, { 16.0f, 0.0f, 16.0f, 16.0f }, DIRT, true});
+    blocks.push_back({{-2.0f, 0.0f, -2.0f}, DIRT, true});
+    blocks.push_back({{-2.0f, 1.0f, -2.0f}, DIRT, true});
+    blocks.push_back({{-4.0f, 0.0f, -2.0f}, DIRT, true});
+    blocks.push_back({{-4.0f, 1.0f, -2.0f}, DIRT, true});
+    blocks.push_back({{-3.0f, 2.0f, -2.0f}, GRASS, true});
 }
 
 World::~World() {
@@ -38,22 +39,49 @@ void World::Update() {
 }
 
 void World::Draw() {
+    bool draw_wires = IsKeyDown(KEY_P) ? true : false;
     ClearBackground(SKYBLUE);
     BeginMode3D(player.camera);
+        if (draw_wires)
+            rlEnableWireMode();
+        else
+            rlDisableWireMode();
         for (auto block : blocks) {
-            DrawCubeTextureRec(block.tex_pos, block.position, BLOCK_SIZE.x, BLOCK_SIZE.y, BLOCK_SIZE.z, WHITE);
-            //DrawCubeWires(block.position, 1.0f, 1.0f, 1.0f, BLACK);
+            DrawCubeTextureRec(block_textures[block.type], block.position, BLOCK_SIZE.x, BLOCK_SIZE.y, BLOCK_SIZE.z, WHITE);
         }
     EndMode3D();
 }
 
 
-void World::DrawCubeTextureRec(Rectangle source, Vector3 position, float width, float height, float length, Color color) {
+void World::MapBlockTextures() {
+    block_textures.insert({GRASS,{
+                          {32.0f, 32.0f}, // size
+                          {32.0f, 0.0f},  // front
+                          {32.0f, 0.0f},  // back
+                          {64.0f, 0.0f},  // top
+                          {0.0f, 0.0f},   // bottom
+                          {32.0f, 0.0f},  // right
+                          {32.0f, 0.0f}   // left
+    }});
+    block_textures.insert({DIRT, {
+                          {32.0f, 32.0f},
+                          {0.0f, 0.0f},
+                          {0.0f, 0.0f},
+                          {0.0f, 0.0f},
+                          {0.0f, 0.0f},
+                          {0.0f, 0.0f},
+                          {0.0f, 0.0f}
+    }});
+}
+
+void World::DrawCubeTextureRec(BlockTexture block_tex, Vector3 position, float width, float height, float length, Color color) {
     float x = position.x;
     float y = position.y;
     float z = position.z;
     float texWidth = (float)texture_atlas.width;
     float texHeight = (float)texture_atlas.height;
+
+    Rectangle source = {block_tex.front.x, block_tex.front.y, block_tex.size.x, block_tex.size.y};
 
     // Set desired texture to be enabled while drawing following vertex data
     rlSetTexture(texture_atlas.id);
@@ -74,6 +102,8 @@ void World::DrawCubeTextureRec(Rectangle source, Vector3 position, float width, 
         rlTexCoord2f(source.x/texWidth, source.y/texHeight);
         rlVertex3f(x - width/2, y + height/2, z + length/2);
 
+        source.x = block_tex.back.x;
+        source.y = block_tex.back.y;
         // Back face
         rlNormal3f(0.0f, 0.0f, - 1.0f);
         rlTexCoord2f((source.x + source.width)/texWidth, (source.y + source.height)/texHeight);
@@ -85,6 +115,8 @@ void World::DrawCubeTextureRec(Rectangle source, Vector3 position, float width, 
         rlTexCoord2f(source.x/texWidth, (source.y + source.height)/texHeight);
         rlVertex3f(x + width/2, y - height/2, z - length/2);
 
+        source.x = block_tex.top.x;
+        source.y = block_tex.top.y;
         // Top face
         rlNormal3f(0.0f, 1.0f, 0.0f);
         rlTexCoord2f(source.x/texWidth, source.y/texHeight);
@@ -96,6 +128,8 @@ void World::DrawCubeTextureRec(Rectangle source, Vector3 position, float width, 
         rlTexCoord2f((source.x + source.width)/texWidth, source.y/texHeight);
         rlVertex3f(x + width/2, y + height/2, z - length/2);
 
+        source.x = block_tex.bottom.x;
+        source.y = block_tex.bottom.y;
         // Bottom face
         rlNormal3f(0.0f, - 1.0f, 0.0f);
         rlTexCoord2f((source.x + source.width)/texWidth, source.y/texHeight);
@@ -107,6 +141,8 @@ void World::DrawCubeTextureRec(Rectangle source, Vector3 position, float width, 
         rlTexCoord2f((source.x + source.width)/texWidth, (source.y + source.height)/texHeight);
         rlVertex3f(x - width/2, y - height/2, z + length/2);
 
+        source.x = block_tex.right.x;
+        source.y = block_tex.right.y;
         // Right face
         rlNormal3f(1.0f, 0.0f, 0.0f);
         rlTexCoord2f((source.x + source.width)/texWidth, (source.y + source.height)/texHeight);
@@ -118,6 +154,8 @@ void World::DrawCubeTextureRec(Rectangle source, Vector3 position, float width, 
         rlTexCoord2f(source.x/texWidth, (source.y + source.height)/texHeight);
         rlVertex3f(x + width/2, y - height/2, z + length/2);
 
+        source.x = block_tex.left.x;
+        source.y = block_tex.left.y;
         // Left face
         rlNormal3f( - 1.0f, 0.0f, 0.0f);
         rlTexCoord2f(source.x/texWidth, (source.y + source.height)/texHeight);
