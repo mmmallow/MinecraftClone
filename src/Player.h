@@ -14,7 +14,6 @@ public:
     void ApplyPosition(float dt);
     void Draw();
 
-
     bool is_grounded = false;
     Vector3 size = {1.0f, 2.0f, 1.0f};
     Vector3 position;
