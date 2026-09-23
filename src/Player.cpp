@@ -12,7 +12,6 @@ Player::Player(Vector3 pos) {
         position.z,
     };
 
-
     UpdateCameraFPS();
 }
 
@@ -21,35 +20,46 @@ Player::~Player() {
 }
 
 void Player::Update (float dt) {
-    Vector2 mouse_delta = GetMouseDelta();
-    look_rotation.x -= mouse_delta.x * sensitivity.x;
-    look_rotation.y += mouse_delta.y * sensitivity.y;
+    if (IsKeyPressed(KEY_C) && !is_freecam)
+        is_freecam = true;
+    else if (IsKeyPressed(KEY_C) && is_freecam)
+        is_freecam = false;
 
-    char sideway = (IsKeyDown(KEY_D) - IsKeyDown(KEY_A));
-    char forward = (IsKeyDown(KEY_W) - IsKeyDown(KEY_S));
-    UpdateBody(dt, look_rotation.x, sideway, forward, IsKeyPressed(KEY_SPACE));
+    if (!is_freecam) {
+        Vector2 mouse_delta = GetMouseDelta();
+        look_rotation.x -= mouse_delta.x * sensitivity.x;
+        look_rotation.y += mouse_delta.y * sensitivity.y;
 
-    head_lerp = Lerp(head_lerp, STAND_HEIGHT, 20.0f*dt);
-    camera.position = (Vector3){
-        position.x,
-        position.y + (BOTTOM_HEIGHT + head_lerp),
-        position.z,
-    };
+        char sideway = (IsKeyDown(KEY_D) - IsKeyDown(KEY_A));
+        char forward = (IsKeyDown(KEY_W) - IsKeyDown(KEY_S));
+        UpdateBody(dt, look_rotation.x, sideway, forward, IsKeyPressed(KEY_SPACE));
 
-    if (is_grounded && ((forward != 0) || (sideway != 0))) {
-        head_timer += dt * 3.0f;
-        walk_lerp = Lerp(walk_lerp, 1.0f, 10.0f*dt);
-        camera.fovy = Lerp(camera.fovy, 55.0f, 5.0f*dt);
+        head_lerp = Lerp(head_lerp, STAND_HEIGHT, 20.0f*dt);
+        camera.position = (Vector3){
+            position.x,
+            position.y + (BOTTOM_HEIGHT + head_lerp),
+            position.z,
+        };
+
+        if (is_grounded && ((forward != 0) || (sideway != 0))) {
+            head_timer += dt * 3.0f;
+            walk_lerp = Lerp(walk_lerp, 1.0f, 10.0f*dt);
+            camera.fovy = Lerp(camera.fovy, 55.0f, 5.0f*dt);
+        }
+        else {
+            walk_lerp = Lerp(walk_lerp, 0.0f, 10.0f*dt);
+            camera.fovy = Lerp(camera.fovy, 60.0f, 5.0f*dt);
+        }
+
+        lean.x = Lerp(lean.x, sideway*0.02f, 10.0f*dt);
+        lean.y = Lerp(lean.y, forward*0.015f, 10.0f*dt);
+
+        UpdateCameraFPS();
     }
     else {
-        walk_lerp = Lerp(walk_lerp, 0.0f, 10.0f*dt);
-        camera.fovy = Lerp(camera.fovy, 60.0f, 5.0f*dt);
+        UpdateCamera(&camera, CAMERA_FREE);
+        position = camera.position;
     }
-
-    lean.x = Lerp(lean.x, sideway*0.02f, 10.0f*dt);
-    lean.y = Lerp(lean.y, forward*0.015f, 10.0f*dt);
-
-    UpdateCameraFPS();
 
     is_grounded = false;
 }

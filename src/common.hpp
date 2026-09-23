@@ -5,7 +5,7 @@
 
 constexpr Vector3 BLOCK_SIZE = { 1.0f, 1.0f, 1.0f };
 
-enum BlockType {
+enum Block {
     GRASS,
     DIRT,
     AIR,
@@ -21,15 +21,22 @@ struct BlockTexture {
     Vector2 left;
 };
 
-struct Block {
-    Vector3 position;
+/*struct Block {
+    Vector3 position = {0.0f, 0.0f, 0.0f};
     BlockType type = AIR;
     bool is_solid = false;
-};
+};*/
 
 
 
 
+inline bool BlockIsSolid (Block block) {
+    if (block == AIR) {
+        return false;
+    }
+
+    return true;
+}
 
 inline BoundingBox GetBoundingBox (Vector3 position, Vector3 size) {
     return (BoundingBox){(Vector3){ position.x - size.x/2,

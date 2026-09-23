@@ -15,6 +15,7 @@ public:
     void Draw();
 
     bool is_grounded = false;
+    bool is_freecam = true;
     Vector3 size = {1.0f, 2.0f, 1.0f};
     Vector3 position;
     Vector3 velocity = { 0 };

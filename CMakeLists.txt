@@ -12,7 +12,7 @@ add_subdirectory(libs/raylib EXCLUDE_FROM_ALL)
 
 add_compile_options(-g -Wall -Wextra -Wno-missing-field-initializers)
 
-file(GLOB_RECURSE SOURCES "src/*.cpp" "src/*.h")
+file(GLOB_RECURSE SOURCES "src/*.cpp" "src/*.h src/*.hpp")
 
 add_executable(MinecraftClone ${SOURCES})
 

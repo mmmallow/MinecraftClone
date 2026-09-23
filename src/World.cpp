@@ -1,25 +1,17 @@
 #include "World.h"
 #include <rlgl.h>
+#include <ctime>
+#include <cstdlib>
+#include <iostream>
 
-World::World (Player& player)
-: player (player)
+World::World (Player& player, int seed)
+: player (player),
+  seed (seed)
 {
     texture_atlas = LoadTexture("assets/tex_atlas.png");
     MapBlockTextures();
 
-    for (int i = -5; i < 5; i++) {
-        for (int j = -5; j < 5; j++) {
-            blocks.push_back({{i,-1.0f,j}, GRASS, true});
-        }
-    }
-    blocks.push_back({{3.0f, 0.0f, 3.0f}, GRASS, true});
-    blocks.push_back({{4.0f, 1.0f, 3.0f}, GRASS, true});
-
-    blocks.push_back({{-2.0f, 0.0f, -2.0f}, DIRT, true});
-    blocks.push_back({{-2.0f, 1.0f, -2.0f}, DIRT, true});
-    blocks.push_back({{-4.0f, 0.0f, -2.0f}, DIRT, true});
-    blocks.push_back({{-4.0f, 1.0f, -2.0f}, DIRT, true});
-    blocks.push_back({{-3.0f, 2.0f, -2.0f}, GRASS, true});
+    Generate();
 }
 
 World::~World() {
@@ -28,14 +20,22 @@ World::~World() {
 
 void World::Destroy() {
     UnloadTexture(texture_atlas);
+    for (auto& pair : chunks) {
+        pair.second->Destroy();
+        delete pair.second;
+    }
 }
+
 
 void World::Update() {
     player.Update(GetFrameTime());
 
-    for (auto it = blocks.begin(); it != blocks.end(); it++) {
-        CheckCollisions(*it);
-    }
+    /*if (!player.is_freecam) {
+        for (auto it = blocks.begin(); it != blocks.end(); it++) {
+            if (it->is_solid)
+                CheckCollisions(*it);
+        }
+    }*/
 }
 
 void World::Draw() {
@@ -46,12 +46,22 @@ void World::Draw() {
             rlEnableWireMode();
         else
             rlDisableWireMode();
-        for (auto block : blocks) {
-            DrawCubeTextureRec(block_textures[block.type], block.position, BLOCK_SIZE.x, BLOCK_SIZE.y, BLOCK_SIZE.z, WHITE);
+
+        for (int i = 0; i < next_chunk_id; i++) {
+            Chunk* cur = chunks[i];
+            for (int x = 0; x < cur->EDGE_LEN; x++) {
+                for (int y = 0; y < cur->Y_LEN; y++) {
+                    for (int z = 0; z < cur->EDGE_LEN; z++) {
+                        Block block = cur->Get({x, y, z});
+                        Vector2 world_xz = Vector2Add({cur->position.x, cur->position.z}, {x, z});
+                        if (BlockIsSolid(block))
+                            DrawCubeTextureRec(block_textures[block], {world_xz.x, y, world_xz.y}, BLOCK_SIZE.x, BLOCK_SIZE.y, BLOCK_SIZE.z, WHITE);
+                    }
+                }
+            }
         }
     EndMode3D();
 }
-
 
 void World::MapBlockTextures() {
     block_textures.insert({GRASS,{
@@ -172,9 +182,9 @@ void World::DrawCubeTextureRec(BlockTexture block_tex, Vector3 position, float w
     rlSetTexture(0);
 }
 
-void World::CheckCollisions (Block block) {
+void World::CheckCollisions (Vector3 block) {
     BoundingBox player_box = GetBoundingBox(player.position, player.size);
-    BoundingBox cube_box = GetBoundingBox(block.position, BLOCK_SIZE);
+    BoundingBox cube_box = GetBoundingBox(block, BLOCK_SIZE);
 
     if (!CheckCollisionBoxes(player_box, cube_box)) return;
 
@@ -198,5 +208,60 @@ void World::CheckCollisions (Block block) {
     }
     else {
         player.position.z += sign.z*depth.z;
+    }
+}
+
+
+void World::Generate() {
+    if (seed == 0) {
+        std::srand(std::time(0));
+        seed = std::rand() * 2;
+    }
+    int octaves = 5;
+    PerlinNoise perlin { 777 };
+
+    // Generate height map
+    int width = 16;
+    int height = 16;
+    float persistence = 0.01f;
+    float lacunarity = 2.0f;
+    float y_offset = 0;
+
+    const float FREQUENCY = 0.02f; // noise units per block
+    const int   BASE_Y    = 64;    // height a noise value of 0.5 maps to
+    const int   AMPLITUDE = 32;    // how far terrain swings above/below BASE_Y
+
+    int chunk_x = 0;
+    int chunk_z = 0;
+
+    for (chunk_z = 0; chunk_z < height; chunk_z++) {
+        for (chunk_x = 0; chunk_x < width; chunk_x++) {
+            Chunk* c = new Chunk(next_chunk_id, { static_cast<float>(chunk_x * width),
+                                                0.0f,
+                                                static_cast<float>(chunk_z * height) });
+            chunks.insert({c->id, c});
+            next_chunk_id++;
+
+            std::vector<std::vector<float>> map(height, std::vector<float>(width));
+
+            for (int z = 0; z < height; z++) {
+                for (int x = 0; x < width; x++) {
+                    float nx = (c->position.x + static_cast<float>(x)) * FREQUENCY;
+                    float nz = (c->position.z + static_cast<float>(z)) * FREQUENCY;
+
+                    map[z][x] = perlin.FractalNoise(nx, nz, y_offset,
+                                                    octaves, persistence, lacunarity);
+                }
+            }
+
+            for (int z = 0; z < height; z++) {
+                for (int x = 0; x < width; x++) {
+                    int surface_y = BASE_Y + static_cast<int>((map[z][x] - 0.5f) * 2.0f * AMPLITUDE);
+                    c->SetFromWorld({ c->position.x + static_cast<float>(x),
+                                    static_cast<float>(surface_y),
+                                    c->position.z + static_cast<float>(z) }, GRASS);
+                }
+            }
+        }
     }
 }
