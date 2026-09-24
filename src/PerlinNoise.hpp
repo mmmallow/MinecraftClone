@@ -38,7 +38,13 @@ private:
 public:
   /// Constructor that initializes the pseudo-random number generator with a seed value.
   /// @param seed Initial seed value for generating numbers.
-  SeededRandom(int seed) : seed(seed) {}
+  SeededRandom(int seed_value) : seed(seed_value) {
+    if (seed <= 0 || seed >= m) {
+      long s = static_cast<long>(seed_value) % (m - 1);
+      if (s < 0) s += (m - 1);
+      seed = s + 1;
+    }
+  }
 
   /// Generates the next number in the sequence of pseudo-random numbers.
   /// @return The next pseudo-random number as an int.

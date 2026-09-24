@@ -4,9 +4,15 @@
 #include "common.hpp"
 #include <raylib.h>
 
+inline unsigned long long ChunkKey(int grid_x, int grid_z) {
+    unsigned long long ux = static_cast<unsigned int>(grid_x);
+    unsigned long long uz = static_cast<unsigned int>(grid_z);
+    return (ux << 32) | uz;
+}
+
 class Chunk {
 public:
-    Chunk(int id, Vector3 pos);
+    Chunk(int id, int grid_x, int grid_z);
     ~Chunk();
     void Destroy();
 
@@ -19,13 +25,15 @@ public:
 
     int id;
 
-    const int EDGE_LEN = 16; // # blocks on x and z axes
-    const int Y_LEN    = 128; // # blocks on y-axis
-    const int VOX_AREA = 16 * 16;
-    const int VOX_VOL  = 16 * 128 * 16; // x-16, y-128, z-16
+    int grid_x;
+    int grid_z;
     Vector3 position;
 
     Block* data;
+
+    Mesh mesh = { 0 };
+    bool has_mesh = false;
+    bool dirty = true;
 };
 
 #endif // !CHUNK_H

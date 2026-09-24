@@ -14,8 +14,7 @@ int main() {
 
     DisableCursor();
 
-    Player player({0.0f, 64.0f, 0.0f});
-
+    Player player({5.0f, 90.0f, 5.0f});
     World world(player);
 
     SetTargetFPS(60);

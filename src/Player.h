@@ -2,6 +2,7 @@
 #define PLAYER_H
 
 #include <raylib.h>
+#include "Chunk.h"
 
 class Player {
 public:
@@ -15,13 +16,15 @@ public:
     void Draw();
 
     bool is_grounded = false;
-    bool is_freecam = true;
+    bool is_freecam = false;
     Vector3 size = {1.0f, 2.0f, 1.0f};
     Vector3 position;
     Vector3 velocity = { 0 };
     Vector3 dir = { 0 };
 
-    const float MAX_SPEED = 10.0f;
+    Chunk* cur_chunk = nullptr;
+
+    const float MAX_SPEED = 20.0f;
     const float JUMP_FORCE = 10.0f;
     const float MAX_ACCEL = 100.0f;
     const float FRICTION = 0.76f;
