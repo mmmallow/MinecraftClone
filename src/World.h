@@ -10,6 +10,8 @@
 #include "common.hpp"
 #include "PerlinNoise.hpp"
 
+class Player;
+
 class World {
 public:
     World(Player& player, int seed = 0);
@@ -18,6 +20,11 @@ public:
 
     void Update();
     void Draw();
+
+    bool Solid(Chunk* c, int x, int y, int z);
+    bool SolidAtWorld(int wx, int wy, int wz);
+    std::pair<Chunk*, Block*> GetBlockAtWorld(int wx, int wy, int wz);
+    void SetBlock(Vector3 pos, Block block);
 
 private:
     void Generate();
@@ -47,8 +54,6 @@ private:
     static float* ToRL(const std::vector<float>& vec);
     void RebuildMesh(Chunk* c);
     void BuildChunkMesh(Chunk* c);
-    bool Solid(Chunk* c, int x, int y, int z);
-    bool SolidAtWorld(int wx, int wy, int wz);
 };
 
 #endif // !WORLD_H

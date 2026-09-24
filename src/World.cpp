@@ -59,6 +59,16 @@ void World::Update() {
     }
 }
 
+void World::SetBlock (Vector3 pos, Block block) {
+    auto pair = GetBlockAtWorld(pos.x, pos.y, pos.z);
+    Chunk* chunk = pair.first;
+    Block* old_block = pair.second;
+    if (old_block != nullptr) {
+        *old_block = block;
+        chunk->dirty = true;
+    }
+}
+
 void World::Draw() {
     bool draw_wires = IsKeyDown(KEY_P) ? true : false;
     ClearBackground(SKYBLUE);
@@ -74,6 +84,8 @@ void World::Draw() {
             if (!c->has_mesh) continue;
             DrawMesh(c->mesh, chunk_material, MatrixTranslate(c->position.x, c->position.y, c->position.z));
         }
+        if (player.current_block.y <= 256.0f)
+            DrawCubeWires(player.current_block, 1.0f, 1.0f, 1.0f, BLACK);
     EndMode3D();
 }
 
@@ -290,6 +302,23 @@ bool World::SolidAtWorld (int wx, int wy, int wz) {
     int lx = PosMod(wx, CHUNK_EDGE_LEN);
     int lz = PosMod(wz, CHUNK_EDGE_LEN);
     return BlockIsSolid(c->data[lx + lz*CHUNK_EDGE_LEN + wy*CHUNK_AREA]);
+}
+
+std::pair<Chunk*, Block*> World::GetBlockAtWorld (int wx, int wy, int wz) {
+    std::pair<Chunk*, Block*> result(nullptr, nullptr);
+    if (wy < 0 || wy >= CHUNK_Y_LEN) return result;
+
+    auto it = chunks.find(ChunkKey(FloorDiv(wx, CHUNK_EDGE_LEN),
+                                   FloorDiv(wz, CHUNK_EDGE_LEN)));
+    if (it == chunks.end()) return result;   // outside the generated world
+
+    Chunk* c = it->second;
+    int lx = PosMod(wx, CHUNK_EDGE_LEN);
+    int lz = PosMod(wz, CHUNK_EDGE_LEN);
+ 
+    result.first = c;
+    result.second = &(c->data[lx + lz*CHUNK_EDGE_LEN + wy*CHUNK_AREA]);
+    return result;
 }
 
 void World::BuildChunkMesh (Chunk* c) {

@@ -1,5 +1,8 @@
 #include "Player.h"
 #include <raymath.h>
+#include <algorithm>
+#include <cmath>
+#include <iostream>
 
 Player::Player(Vector3 pos) {
     position = pos;
@@ -11,6 +14,7 @@ Player::Player(Vector3 pos) {
         position.y + (BOTTOM_HEIGHT + head_lerp),
         position.z,
     };
+    now = std::time(NULL);
 
     UpdateCameraFPS();
 }
@@ -19,11 +23,19 @@ Player::~Player() {
 
 }
 
-void Player::Update (float dt) {
+void Player::HandleInput() {
     if (IsKeyPressed(KEY_C) && !is_freecam)
         is_freecam = true;
     else if (IsKeyPressed(KEY_C) && is_freecam)
         is_freecam = false;
+
+    // very basic block breaking
+    if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON))
+        world->SetBlock(current_block, Block::AIR);
+}
+
+void Player::Update (float dt) {
+    HandleInput();
 
     if (!is_freecam) {
         Vector2 mouse_delta = GetMouseDelta();
@@ -61,6 +73,7 @@ void Player::Update (float dt) {
         position = camera.position;
     }
 
+    UpdateCurrentBlock();
     is_grounded = false;
 }
 
@@ -134,4 +147,105 @@ void Player::UpdateBody(float dt, float rot, char side, char forward, bool jump_
     position.x += velocity.x*dt;
     position.y += velocity.y*dt;
     position.z += velocity.z*dt;
+}
+
+
+/*
+*
+* DDA algo implementation comes from https://lodev.org/cgtutor/raycasting.html
+*
+*/
+void Player::UpdateCurrentBlock() {
+    if (std::time(NULL) >= now+5) {
+        now = std::time(NULL);
+    }
+
+    Vector2 screen_center =  { GetScreenWidth()/2.0f, GetScreenHeight()/2.0f };
+    Ray ray = GetScreenToWorldRay(screen_center, camera);
+
+    // (block n spans [n-0.5, n+0.5]), so shift by 0.5 to line up with the DDA grid
+    Vector3 origin = Vector3AddValue(ray.position, 0.5f);
+
+    int map_x = (int)std::floor(origin.x);
+    int map_y = (int)std::floor(origin.y);
+    int map_z = (int)std::floor(origin.z);
+    int num_blocks = 0; // track the number of blocks checked to cap player reach
+
+    // length of ray from current pos to next x or y side
+    double side_dist_x;
+    double side_dist_y;
+    double side_dist_z;
+
+    // length of ray from one x or y side to the next
+    double delta_dist_x = (ray.direction.x == 0) ? 1e30 : std::abs(1 / ray.direction.x);
+    double delta_dist_y = (ray.direction.y == 0) ? 1e30 : std::abs(1 / ray.direction.y);
+    double delta_dist_z = (ray.direction.z == 0) ? 1e30 : std::abs(1 / ray.direction.z);
+    double perp_block_dist;
+
+    int step_x;
+    int step_y;
+    int step_z;
+
+    int side;
+
+    if (ray.direction.x < 0) {
+        step_x = -1;
+        side_dist_x = (origin.x - map_x) * delta_dist_x;
+    }
+    else {
+        step_x = 1;
+        side_dist_x = (map_x + 1.0f - origin.x) * delta_dist_x;
+    }
+    if (ray.direction.y < 0) {
+        step_y = -1;
+        side_dist_y = (origin.y - map_y) * delta_dist_y;
+    }
+    else {
+        step_y = 1;
+        side_dist_y = (map_y + 1.0f - origin.y) * delta_dist_y;
+    }
+    if (ray.direction.z < 0) {
+        step_z = -1;
+        side_dist_z = (origin.z - map_z) * delta_dist_z;
+    }
+    else {
+        step_z = 1;
+        side_dist_z = (map_z + 1.0f - origin.z) * delta_dist_z;
+    }
+
+
+    while (num_blocks <= 10) {
+        if (side_dist_x < side_dist_y && side_dist_x < side_dist_z) {
+            side_dist_x += delta_dist_x;
+            map_x += step_x;
+            side = 0;
+        }
+        else if (side_dist_z < side_dist_x && side_dist_z < side_dist_y) {
+            side_dist_z += delta_dist_z;
+            map_z += step_z;
+            side = 1;
+        }
+        else {
+            side_dist_y += delta_dist_y;
+            map_y += step_y;
+            side = 2;
+        }
+
+        if (world->SolidAtWorld(map_x, map_y, map_z)) {
+            if (side == 0)       perp_block_dist = side_dist_x - delta_dist_x;
+            else if (side == 1)  perp_block_dist = side_dist_z - delta_dist_z;
+            else                 perp_block_dist = side_dist_y - delta_dist_y;
+
+            if (perp_block_dist <= reach) {
+                current_block = { static_cast<float>(map_x), static_cast<float>(map_y), static_cast<float>(map_z) };
+                return;
+            }
+            else num_blocks = 10;
+        }
+
+        num_blocks++;
+    }
+
+    // No block found
+    current_block = { 0.0f, 256.0f, 0.0f }; // arbitrary value player should never be able to reach
 }

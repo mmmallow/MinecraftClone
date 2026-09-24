@@ -2,7 +2,12 @@
 #define PLAYER_H
 
 #include <raylib.h>
+#include <ctime>
+#include "World.h"
 #include "Chunk.h"
+#include "common.hpp"
+
+class World;
 
 class Player {
 public:
@@ -10,7 +15,7 @@ public:
 
     Player(Vector3 pos);
     ~Player();
-    void HandleInput(KeyboardKey input);
+    void HandleInput();
     void Update(float dt);
     void ApplyPosition(float dt);
     void Draw();
@@ -21,7 +26,11 @@ public:
     Vector3 position;
     Vector3 velocity = { 0 };
     Vector3 dir = { 0 };
+    Vector3 current_block = { 0 };
+    int reach = 5.5; // how many blocks player can reach
+    std::time_t now;
 
+    World* world = nullptr;
     Chunk* cur_chunk = nullptr;
 
     const float MAX_SPEED = 20.0f;
@@ -46,6 +55,7 @@ public:
 private:
     void UpdateCameraFPS();
     void UpdateBody(float dt, float rot, char side, char forward, bool jump_pressed);
+    void UpdateCurrentBlock();
 };
 
 #endif // !PLAYER_H

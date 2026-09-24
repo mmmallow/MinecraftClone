@@ -17,6 +17,8 @@ enum Block {
     AIR,
     STONE,
     SAND,
+
+    NONE,
 };
 
 struct BlockTexture {

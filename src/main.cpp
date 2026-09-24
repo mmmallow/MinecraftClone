@@ -16,6 +16,7 @@ int main() {
 
     Player player({5.0f, 90.0f, 5.0f});
     World world(player);
+    player.world = &world;
 
     SetTargetFPS(60);
 
@@ -24,9 +25,10 @@ int main() {
 
         BeginDrawing();
             world.Draw();
-            DrawRectangle((GetScreenWidth() / 2.0f)-2, (GetScreenHeight()/2.0f)-8, 4, 16, RAYWHITE);
+            DrawRectangle((GetScreenWidth() / 2.0f) - 2, (GetScreenHeight()/2.0f)-8, 4, 16, RAYWHITE);
             DrawRectangle((GetScreenWidth() / 2.0f) - 8, (GetScreenHeight()/2.0f)-2, 16, 4, RAYWHITE);
             DrawFPS(10, 10);
+            DrawText(TextFormat("Pos: %.2f, %.2f, %.2f", player.position.x, player.position.y, player.position.z), 10, 30, 20, BLACK);
         EndDrawing();
     }
 
