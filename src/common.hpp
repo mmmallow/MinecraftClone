@@ -21,6 +21,8 @@ enum Block {
     SAND,
     LOG,
     LEAF,
+    GLASS,
+    PLANK,
 
     NONE,
 };
@@ -33,20 +35,24 @@ static inline Block& increase_block (Block& block) {
         case STONE: return block = SAND;
         case SAND: return block = LOG;
         case LOG: return block = LEAF;
-        case LEAF: return block = GRASS;
+        case LEAF: return block = GLASS;
+        case GLASS: return block = PLANK;
+        case PLANK: return block = GRASS;
         default: return block = GRASS;
     }
 }
 
 static inline Block& decrease_block (Block& block) {
     switch (block) {
-        case GRASS: return block = LEAF;
+        case GRASS: return block = PLANK;
         case DIRT: return block = GRASS;
         case AIR: return block = DIRT;
         case STONE: return block = DIRT;
         case SAND: return block = STONE;
         case LOG: return block = SAND;
         case LEAF: return block = LOG;
+        case GLASS: return block = LEAF;
+        case PLANK: return block = GLASS;
         default: return block = GRASS;
     }
 }
@@ -62,41 +68,18 @@ struct BlockTexture {
 };
 
 static inline std::string GetBlockName (Block block) {
-    std::string b = "";
     switch (block) {
-        case AIR:
-        b = "Air";
-        break;
-
-        case GRASS:
-        b = "Grass";
-        break;
-
-        case DIRT:
-        b = "Dirt";
-        break;
-
-        case STONE:
-        b = "Stone";
-        break;
-
-        case SAND:
-        b = "Sand";
-        break;
-
-        case LOG:
-        b = "Log";
-        break;
-
-        case LEAF:
-        b = "Leaf";
-        break;
-
-        default:
-        b = "None";
-        break;
+        case AIR: return "Air";
+        case GRASS: return "Grass";
+        case DIRT: return "Dirt";
+        case STONE: return "Stone";
+        case SAND: return "Sand";
+        case LOG: return "Log";
+        case LEAF: return "Leaf";
+        case GLASS: return "Glass";
+        case PLANK: return "Plank";
+        default: return "None";
     }
-    return b;
 }
 
 inline bool BlockIsSolid (Block block) {
@@ -111,6 +94,8 @@ inline bool BlockIsSeeThrough (Block block) {
     if (block == AIR)
         return true;
     else if (block == LEAF)
+        return true;
+    else if (block == GLASS)
         return true;
 
     return false;

@@ -6,22 +6,6 @@
 #include <cstring>
 #include <cmath>
 
-// Default raylib fragment shader, plus discarding fully transparent texels so
-// they don't write depth and hide blocks behind them (e.g. through leaves).
-static const char* CHUNK_FS = R"(
-#version 330
-in vec2 fragTexCoord;
-in vec4 fragColor;
-uniform sampler2D texture0;
-uniform vec4 colDiffuse;
-out vec4 finalColor;
-void main() {
-    vec4 texelColor = texture(texture0, fragTexCoord);
-    if (texelColor.a < 0.5) discard;
-    finalColor = texelColor*colDiffuse*fragColor;
-}
-)";
-
 World::World (Player& player, int seed)
 : player (player),
   seed (seed)
@@ -30,7 +14,7 @@ World::World (Player& player, int seed)
     MapBlockTextures();
 
     chunk_material = LoadMaterialDefault();
-    chunk_material.shader = LoadShaderFromMemory(nullptr, CHUNK_FS);
+    chunk_material.shader = LoadShader("assets/shaders/lighting.vs", "assets/shaders/lighting.fs");
     SetMaterialTexture(&chunk_material, MATERIAL_MAP_DIFFUSE, texture_atlas);
 
     Generate();
@@ -175,6 +159,24 @@ void World::MapBlockTextures() {
                           {64.0f, 32.0f},
                           {64.0f, 32.0f}
     }});
+    block_textures.insert({GLASS, {
+                          {32.0f, 32.0f},
+                          {96.0f, 32.0f},
+                          {96.0f, 32.0f},
+                          {96.0f, 32.0f},
+                          {96.0f, 32.0f},
+                          {96.0f, 32.0f},
+                          {96.0f, 32.0f}
+    }});
+    block_textures.insert({PLANK, {
+                          {32.0f, 32.0f},
+                          {128.0f, 32.0f},
+                          {128.0f, 32.0f},
+                          {128.0f, 32.0f},
+                          {128.0f, 32.0f},
+                          {128.0f, 32.0f},
+                          {128.0f, 32.0f}
+    }});
 }
 
 
@@ -312,10 +314,23 @@ void World::Generate() {
 
                     // Fill chunk with blocks
                     for (int y = surface_y-1; y >= 0; y--) {
-                        type = DIRT;
+                        if (type == SAND) {
+                            c->SetFromWorld({ c->position.x + static_cast<float>(x),
+                                            static_cast<float>(y--),
+                                            c->position.z + static_cast<float>(z) }, type);
+                            c->SetFromWorld({ c->position.x + static_cast<float>(x),
+                                            static_cast<float>(y--),
+                                            c->position.z + static_cast<float>(z) }, type);
+                             c->SetFromWorld({ c->position.x + static_cast<float>(x),
+                                            static_cast<float>(y--),
+                                            c->position.z + static_cast<float>(z) }, type);
+                            type = DIRT;
+                        }
                         if (y < 22) {
                             type = STONE;
+ 
                         }
+                        else type = DIRT;
                         c->SetFromWorld({ c->position.x + static_cast<float>(x),
                                         static_cast<float>(y),
                                         c->position.z + static_cast<float>(z) }, type);
@@ -380,7 +395,7 @@ std::vector<Vector3> World::TreeGen (Ray ray) {
 std::vector<Vector3> World::LeafGen (Vector3 center) {
     std::vector<Vector3> leaves;
     leaves.push_back(center);
-    int num_leaves = 110 + rand() % (140 - 110);
+    int num_leaves = 110 + rand() % (145 - 110);
     for (int i = 0; i < num_leaves; i++) {
         Vector3 direction = { uniform_random(-1.0f, 1.0f), uniform_random(-1.0f, 1.0f), uniform_random(-1.0f, 1.0f) };
         float dist = uniform_random(0, 2.0f);
