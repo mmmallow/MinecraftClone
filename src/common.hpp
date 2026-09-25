@@ -4,6 +4,7 @@
 #include <raylib.h>
 #include <raymath.h>
 #include <cmath>
+#include <cstdlib>
 
 constexpr Vector3 BLOCK_SIZE = { 1.0f, 1.0f, 1.0f };
 static constexpr int CHUNK_EDGE_LEN = 16;  // # blocks on x and z axes
@@ -17,6 +18,8 @@ enum Block {
     AIR,
     STONE,
     SAND,
+    LOG,
+    LEAF,
 
     NONE,
 };
@@ -40,6 +43,15 @@ inline bool BlockIsSolid (Block block) {
     return true;
 }
 
+inline bool BlockIsSeeThrough (Block block) {
+    if (block == AIR)
+        return true;
+    else if (block == LEAF)
+        return true;
+
+    return false;
+}
+
 inline BoundingBox GetBoundingBox (Vector3 position, Vector3 size) {
     return (BoundingBox){(Vector3){ position.x - size.x/2,
                                     position.y - size.y/2,
@@ -59,6 +71,10 @@ static inline int PosMod(int a, int b) {
     int r = a % b;
     if (r < 0) r += b;
     return r;
+}
+
+static inline float uniform_random (float min, float max) {
+    return min + (rand() / (RAND_MAX + 1.0f)) * (max - min);
 }
 
 static inline Vector3 GetCameraRight(Camera* camera) {

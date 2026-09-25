@@ -5,6 +5,7 @@
 #include <raymath.h>
 #include <vector>
 #include <unordered_map>
+#include <string>
 #include "Player.h"
 #include "Chunk.h"
 #include "common.hpp"
@@ -23,11 +24,16 @@ public:
 
     bool Solid(Chunk* c, int x, int y, int z);
     bool SolidAtWorld(int wx, int wy, int wz);
+    bool SeeThrough(Chunk* c, int x, int y, int z);
+    bool SeeThroughAtWorld(int wx, int wy, int wz);
     std::pair<Chunk*, Block*> GetBlockAtWorld(int wx, int wy, int wz);
     void SetBlock(Vector3 pos, Block block);
 
 private:
     void Generate();
+    std::vector<Vector3> TreeGen(Ray ray);
+    std::vector<Vector3> LeafGen(Vector3 center);
+    std::string LSystem(std::string system, int count);
 
     void CheckCollisions(Vector3 block);
     void MapBlockTextures();

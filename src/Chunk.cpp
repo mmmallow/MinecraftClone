@@ -1,9 +1,8 @@
 #include "Chunk.h"
 #include <raymath.h>
 
-Chunk::Chunk (int id, int grid_x, int grid_z)
-: id (id),
-  grid_x (grid_x),
+Chunk::Chunk (int grid_x, int grid_z)
+: grid_x (grid_x),
   grid_z (grid_z)
 {
     position = { static_cast<float>(grid_x * CHUNK_EDGE_LEN),

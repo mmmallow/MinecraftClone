@@ -12,7 +12,7 @@ inline unsigned long long ChunkKey(int grid_x, int grid_z) {
 
 class Chunk {
 public:
-    Chunk(int id, int grid_x, int grid_z);
+    Chunk(int grid_x, int grid_z);
     ~Chunk();
     void Destroy();
 
@@ -22,8 +22,6 @@ public:
     void SetFromWorld(Vector3 world, Block block);
 
     Vector3 ToLocal(Vector3 world) const;
-
-    int id;
 
     int grid_x;
     int grid_z;

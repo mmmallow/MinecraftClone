@@ -6,6 +6,22 @@
 #include <cstring>
 #include <cmath>
 
+// Default raylib fragment shader, plus discarding fully transparent texels so
+// they don't write depth and hide blocks behind them (e.g. through leaves).
+static const char* CHUNK_FS = R"(
+#version 330
+in vec2 fragTexCoord;
+in vec4 fragColor;
+uniform sampler2D texture0;
+uniform vec4 colDiffuse;
+out vec4 finalColor;
+void main() {
+    vec4 texelColor = texture(texture0, fragTexCoord);
+    if (texelColor.a < 0.5) discard;
+    finalColor = texelColor*colDiffuse*fragColor;
+}
+)";
+
 World::World (Player& player, int seed)
 : player (player),
   seed (seed)
@@ -14,6 +30,7 @@ World::World (Player& player, int seed)
     MapBlockTextures();
 
     chunk_material = LoadMaterialDefault();
+    chunk_material.shader = LoadShaderFromMemory(nullptr, CHUNK_FS);
     SetMaterialTexture(&chunk_material, MATERIAL_MAP_DIFFUSE, texture_atlas);
 
     Generate();
@@ -31,6 +48,7 @@ void World::Destroy() {
         delete pair.second;
     }
 
+    UnloadShader(chunk_material.shader);
     RL_FREE(chunk_material.maps);
     UnloadTexture(texture_atlas);
 }
@@ -84,7 +102,7 @@ void World::Draw() {
             if (!c->has_mesh) continue;
             DrawMesh(c->mesh, chunk_material, MatrixTranslate(c->position.x, c->position.y, c->position.z));
         }
-        if (player.current_block.y <= 256.0f)
+        if (player.current_block.x != 0.0f && player.current_block.y != 256.0f && player.current_block.z != 0.0f)
             DrawCubeWires(player.current_block, 1.0f, 1.0f, 1.0f, BLACK);
     EndMode3D();
 }
@@ -125,6 +143,25 @@ void World::MapBlockTextures() {
                           {128.0f, 0.0f},
                           {128.0f, 0.0f},
                           {128.0f, 0.0f}
+    }});
+
+    block_textures.insert({LOG,{
+                          {32.0f, 32.0f},
+                          {0.0f, 32.0f},
+                          {0.0f, 32.0f},
+                          {32.0f, 32.0f},
+                          {32.0f, 32.0f},
+                          {0.0f, 32.0f},
+                          {0.0f, 32.0f}
+    }});
+    block_textures.insert({LEAF, {
+                          {32.0f, 32.0f},
+                          {64.0f, 32.0f},
+                          {64.0f, 32.0f},
+                          {64.0f, 32.0f},
+                          {64.0f, 32.0f},
+                          {64.0f, 32.0f},
+                          {64.0f, 32.0f}
     }});
 }
 
@@ -176,8 +213,10 @@ void World::Generate() {
         std::srand(std::time(0));
         seed = std::rand();
     }
+    //seed = 777;
     int octaves = 5;
     PerlinNoise perlin { seed };
+    srand(seed);
 
     // Generate height map
     int width = 16;
@@ -194,11 +233,13 @@ void World::Generate() {
     int chunk_z = 0;
 
 
+    std::vector<Vector3> leaves;
+    std::vector<Vector3> logs;
+
     for (chunk_z = 0; chunk_z < height; chunk_z++) {
         for (chunk_x = 0; chunk_x < width; chunk_x++) {
-            Chunk* c = new Chunk(next_chunk_id, chunk_x, chunk_z);
+            Chunk* c = new Chunk(chunk_x, chunk_z);
             chunks.insert({ChunkKey(c->grid_x, c->grid_z), c});
-            next_chunk_id++;
 
             std::vector<std::vector<float>> map(height, std::vector<float>(width));
 
@@ -212,8 +253,10 @@ void World::Generate() {
                 }
             }
 
+            int middle_y = BASE_Y;
             for (int z = 0; z < CHUNK_EDGE_LEN; z++) {
                 for (int x = 0; x < CHUNK_EDGE_LEN; x++) {
+                    // Generate surface blocks
                     int surface_y = BASE_Y + static_cast<int>((map[z][x] - 0.5f) * 2.0f * AMPLITUDE);
                     Block type = GRASS;
                     if (surface_y < 20) {
@@ -225,15 +268,167 @@ void World::Generate() {
                     c->SetFromWorld({ c->position.x + static_cast<float>(x),
                                     static_cast<float>(surface_y),
                                     c->position.z + static_cast<float>(z) }, type);
+
+                    // Generate trees
+                    if (type == GRASS) {
+                        int random_num = rand() % (1000);
+                        if (random_num == 999) {
+                            /*int tree_height = rand() % (5 - 3 + 1) + 3;
+                            int half_tree = tree_height / 2;
+                            for (int i = 0; i < tree_height; i++) {
+                                c->SetFromWorld({ c->position.x + static_cast<float>(x),
+                                                static_cast<float>(surface_y+1+i),
+                                                c->position.z + static_cast<float>(z) }, LOG);
+                            }
+                            for (int i = half_tree; i < tree_height+1; i++) {
+                                int y = half_tree+surface_y+i;
+                                for (int dz = -2; dz <= 2; dz++) {
+                                    for (int dx = -2; dx <= 2; dx++) {
+                                        leaves.push_back({ c->position.x + x+dx,
+                                                           static_cast<float>(y),
+                                                           c->position.z + z+dz });
+                                    }
+                                }
+                            }*/
+                            c->SetFromWorld({ c->position.x + static_cast<float>(x),
+                                            static_cast<float>(surface_y+1),
+                                            c->position.z + static_cast<float>(z) }, LOG);
+                            c->SetFromWorld({ c->position.x + static_cast<float>(x),
+                                            static_cast<float>(surface_y+2),
+                                            c->position.z + static_cast<float>(z) }, LOG);
+                            c->SetFromWorld({ c->position.x + static_cast<float>(x),
+                                            static_cast<float>(surface_y+3),
+                                            c->position.z + static_cast<float>(z) }, LOG);
+
+                            Vector3 branch_ends[3] = { 0 };
+                            for (int i = 0; i < 3; i++) {
+                                Vector3 direction = {uniform_random(-1.0f, 1.0f), 1.0f, uniform_random(-1.0f, 1.0f)};
+                                Ray ray = { {c->position.x + static_cast<float>(x), static_cast<float>(surface_y+3), c->position.z + static_cast<float>(z)},
+                                            Vector3Normalize(direction)};
+                                auto vec = TreeGen(ray);
+                                logs.insert(logs.end(), vec.begin(), vec.end());
+
+                                auto leaf = LeafGen(logs.back());
+                                leaves.insert(leaves.end(), leaf.begin(), leaf.end());
+                            }
+
+
+                        }
+                    }
+
+                    // Fill chunk with blocks
+                    for (int y = surface_y-1; y >= 0; y--) {
+                        type = DIRT;
+                        if (y < 22) {
+                            type = STONE;
+                        }
+                        c->SetFromWorld({ c->position.x + static_cast<float>(x),
+                                        static_cast<float>(y),
+                                        c->position.z + static_cast<float>(z) }, type);
+                    }
+
+                    if (z == CHUNK_EDGE_LEN / 2 && x == CHUNK_EDGE_LEN / 2)
+                        middle_y = surface_y;
                 }
+            }
+
+            if (chunk_z == height / 2 && chunk_x == width / 2) {
+                player.position.x = chunk_x * width + CHUNK_EDGE_LEN / 2;
+                player.position.y = middle_y + 10.0f;
+                player.position.z = chunk_z * height + CHUNK_EDGE_LEN / 2;
             }
         }
     }
 
+    for (auto& log : logs) {
+        Block* block = GetBlockAtWorld(log.x, log.y, log.z).second;
+        if (block != nullptr && *block == AIR)
+            *block = LOG;
+    }
+    for (auto& leaf : leaves) {
+        Block* block = GetBlockAtWorld(leaf.x, leaf.y, leaf.z).second;
+        if (block != nullptr && *block == AIR)
+            *block = LEAF;
+    }
+
 }
 
+std::vector<Vector3> World::TreeGen (Ray ray) {
+    std::vector<Vector3> result;
+    std::string system = LSystem("T", 2);
+    float angle = 4.0f;
+    for (char& s : system) {
+        if (s == 'T') {
+            ray.position = Vector3Add(ray.position, ray.direction);
+            result.push_back({ std::floor(ray.position.x), std::floor(ray.position.y), std::floor(ray.position.z) });
+        }
+        else if (s == '+') {
+            Matrix rot = MatrixRotateY(angle * DEG2RAD);
+            ray.direction = Vector3Transform(ray.direction, rot);
+        }
+        else if (s == '-') {
+            Matrix rot = MatrixRotateY(-angle * DEG2RAD);
+            ray.direction = Vector3Transform(ray.direction, rot);
+        }
+        else if (s == '>') {
+            Matrix rot = MatrixRotateX(angle * DEG2RAD);
+            ray.direction = Vector3Transform(ray.direction, rot);
+        }
+        else if (s == '<') {
+            Matrix rot = MatrixRotateX(-angle * DEG2RAD);
+            ray.direction = Vector3Transform(ray.direction, rot);
+        }
+    }
 
+    return result;
+}
 
+std::vector<Vector3> World::LeafGen (Vector3 center) {
+    std::vector<Vector3> leaves;
+    leaves.push_back(center);
+    int num_leaves = 110 + rand() % (140 - 110);
+    for (int i = 0; i < num_leaves; i++) {
+        Vector3 direction = { uniform_random(-1.0f, 1.0f), uniform_random(-1.0f, 1.0f), uniform_random(-1.0f, 1.0f) };
+        float dist = uniform_random(0, 2.0f);
+        direction = Vector3Scale(direction, dist);
+        leaves.push_back(Vector3Add(center, direction));
+    }
+
+    return leaves;
+}
+
+std::string World::LSystem (std::string system, int count) {
+    if (count == 0)
+        return system;
+
+    std::string result = "";
+    for (char& s : system) {
+        switch (s) {
+            case 'T':
+            result += "T+>";
+            break;
+
+            case '+':
+            result += "+<T";
+            break;
+
+            case '-':
+            result += "+T>";
+            break;
+
+            case '>':
+            result += "<T+";
+            break;
+
+            case '<':
+            result += ">-T";
+            break;
+        }
+    }
+ 
+    count--;
+    return LSystem(result, count);
+}
 
 
 void World::PushFace(const float p[4][3], const float nrm[3], float tx, float ty, float tw, float th) {
@@ -304,6 +499,30 @@ bool World::SolidAtWorld (int wx, int wy, int wz) {
     return BlockIsSolid(c->data[lx + lz*CHUNK_EDGE_LEN + wy*CHUNK_AREA]);
 }
 
+bool World::SeeThrough (Chunk* c, int x, int y, int z) {
+    if (y < 0 || y >= CHUNK_Y_LEN) return true;
+
+    if (x >= 0 && x < CHUNK_EDGE_LEN && z >= 0 && z < CHUNK_EDGE_LEN)
+        return BlockIsSeeThrough(c->data[x + z*CHUNK_EDGE_LEN + y*CHUNK_AREA]);
+
+    return SeeThroughAtWorld(c->grid_x * CHUNK_EDGE_LEN + x,
+                             y,
+                             c->grid_z * CHUNK_EDGE_LEN + z);
+}
+
+bool World::SeeThroughAtWorld (int wx, int wy, int wz) {
+    if (wy < 0 || wy >= CHUNK_Y_LEN) return true;
+
+    auto it = chunks.find(ChunkKey(FloorDiv(wx, CHUNK_EDGE_LEN),
+                                   FloorDiv(wz, CHUNK_EDGE_LEN)));
+    if (it == chunks.end()) return true;   // outside the generated world
+
+    Chunk* c = it->second;
+    int lx = PosMod(wx, CHUNK_EDGE_LEN);
+    int lz = PosMod(wz, CHUNK_EDGE_LEN);
+    return BlockIsSeeThrough(c->data[lx + lz*CHUNK_EDGE_LEN + wy*CHUNK_AREA]);
+}
+
 std::pair<Chunk*, Block*> World::GetBlockAtWorld (int wx, int wy, int wz) {
     std::pair<Chunk*, Block*> result(nullptr, nullptr);
     if (wy < 0 || wy >= CHUNK_Y_LEN) return result;
@@ -333,32 +552,32 @@ void World::BuildChunkMesh (Chunk* c) {
                 const float cx = x, cy = y, cz = z, h = 0.5f;
                 const float tw = bt.size.x, th = bt.size.y;
 
-                if (!Solid(c, x, y, z + 1)) {   // front (+Z)
+                if (SeeThrough(c, x, y, z + 1)) {   // front (+Z)
                     float p[4][3] = {{cx-h,cy-h,cz+h},{cx+h,cy-h,cz+h},{cx+h,cy+h,cz+h},{cx-h,cy+h,cz+h}};
                     float nrm[3] = {0.0f, 0.0f, 1.0f};
                     PushFace(p, nrm, bt.front.x, bt.front.y, tw, th);
                 }
-                if (!Solid(c, x, y, z - 1)) {   // back (-Z)
+                if (SeeThrough(c, x, y, z - 1)) {   // back (-Z)
                     float p[4][3] = {{cx+h,cy-h,cz-h},{cx-h,cy-h,cz-h},{cx-h,cy+h,cz-h},{cx+h,cy+h,cz-h}};
                     float nrm[3] = {0.0f, 0.0f, -1.0f};
                     PushFace(p, nrm, bt.back.x, bt.back.y, tw, th);
                 }
-                if (!Solid(c, x, y + 1, z)) {   // top (+Y)
+                if (SeeThrough(c, x, y + 1, z)) {   // top (+Y)
                     float p[4][3] = {{cx-h,cy+h,cz+h},{cx+h,cy+h,cz+h},{cx+h,cy+h,cz-h},{cx-h,cy+h,cz-h}};
                     float nrm[3] = {0.0f, 1.0f, 0.0f};
                     PushFace(p, nrm, bt.top.x, bt.top.y, tw, th);
                 }
-                if (!Solid(c, x, y - 1, z)) {   // bottom (-Y)
+                if (SeeThrough(c, x, y - 1, z)) {   // bottom (-Y)
                     float p[4][3] = {{cx-h,cy-h,cz-h},{cx+h,cy-h,cz-h},{cx+h,cy-h,cz+h},{cx-h,cy-h,cz+h}};
                     float nrm[3] = {0.0f, -1.0f, 0.0f};
                     PushFace(p, nrm, bt.bottom.x, bt.bottom.y, tw, th);
                 }
-                if (!Solid(c, x + 1, y, z)) {   // right (+X)
+                if (SeeThrough(c, x + 1, y, z)) {   // right (+X)
                     float p[4][3] = {{cx+h,cy-h,cz+h},{cx+h,cy-h,cz-h},{cx+h,cy+h,cz-h},{cx+h,cy+h,cz+h}};
                     float nrm[3] = {1.0f, 0.0f, 0.0f};
                     PushFace(p, nrm, bt.right.x, bt.right.y, tw, th);
                 }
-                if (!Solid(c, x - 1, y, z)) {   // left (-X)
+                if (SeeThrough(c, x - 1, y, z)) {   // left (-X)
                     float p[4][3] = {{cx-h,cy-h,cz-h},{cx-h,cy-h,cz+h},{cx-h,cy+h,cz+h},{cx-h,cy+h,cz-h}};
                     float nrm[3] = {-1.0f, 0.0f, 0.0f};
                     PushFace(p, nrm, bt.left.x, bt.left.y, tw, th);
