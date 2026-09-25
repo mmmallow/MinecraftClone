@@ -5,6 +5,7 @@
 #include <raymath.h>
 #include <cmath>
 #include <cstdlib>
+#include <string>
 
 constexpr Vector3 BLOCK_SIZE = { 1.0f, 1.0f, 1.0f };
 static constexpr int CHUNK_EDGE_LEN = 16;  // # blocks on x and z axes
@@ -24,6 +25,32 @@ enum Block {
     NONE,
 };
 
+static inline Block& increase_block (Block& block) {
+    switch (block) {
+        case GRASS: return block = DIRT;
+        case DIRT: return block = STONE;
+        case AIR: return block = STONE;
+        case STONE: return block = SAND;
+        case SAND: return block = LOG;
+        case LOG: return block = LEAF;
+        case LEAF: return block = GRASS;
+        default: return block = GRASS;
+    }
+}
+
+static inline Block& decrease_block (Block& block) {
+    switch (block) {
+        case GRASS: return block = LEAF;
+        case DIRT: return block = GRASS;
+        case AIR: return block = DIRT;
+        case STONE: return block = DIRT;
+        case SAND: return block = STONE;
+        case LOG: return block = SAND;
+        case LEAF: return block = LOG;
+        default: return block = GRASS;
+    }
+}
+
 struct BlockTexture {
     Vector2 size = {32.0f, 32.0f};
     Vector2 front;
@@ -34,6 +61,43 @@ struct BlockTexture {
     Vector2 left;
 };
 
+static inline std::string GetBlockName (Block block) {
+    std::string b = "";
+    switch (block) {
+        case AIR:
+        b = "Air";
+        break;
+
+        case GRASS:
+        b = "Grass";
+        break;
+
+        case DIRT:
+        b = "Dirt";
+        break;
+
+        case STONE:
+        b = "Stone";
+        break;
+
+        case SAND:
+        b = "Sand";
+        break;
+
+        case LOG:
+        b = "Log";
+        break;
+
+        case LEAF:
+        b = "Leaf";
+        break;
+
+        default:
+        b = "None";
+        break;
+    }
+    return b;
+}
 
 inline bool BlockIsSolid (Block block) {
     if (block == AIR) {

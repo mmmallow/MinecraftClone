@@ -31,7 +31,16 @@ void Player::HandleInput() {
 
     // very basic block breaking
     if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON))
-        world->SetBlock(current_block, Block::AIR);
+        world->SetBlock(current_block_looking.position, Block::AIR);
+
+    float m = GetMouseWheelMove();
+    if (m == 1)
+        increase_block(current_block_held);
+    else if (m == -1)
+        decrease_block(current_block_held);
+
+    if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON) && current_block_looking.position.x != 0.0f && current_block_looking.position.y != 256.0f && current_block_looking.position.z != 0.0f && current_block_held != NONE && current_block_held != AIR)
+        world->SetBlock(Vector3Add(current_block_looking.position, current_block_looking.direction), current_block_held);
 }
 
 void Player::Update (float dt) {
@@ -232,12 +241,21 @@ void Player::UpdateCurrentBlock() {
         }
 
         if (world->SolidAtWorld(map_x, map_y, map_z)) {
-            if (side == 0)       perp_block_dist = side_dist_x - delta_dist_x;
-            else if (side == 1)  perp_block_dist = side_dist_z - delta_dist_z;
-            else                 perp_block_dist = side_dist_y - delta_dist_y;
+            if (side == 0) {
+                perp_block_dist = side_dist_x - delta_dist_x;
+                current_block_looking.direction = { static_cast<float>(-step_x), 0.0f, 0.0f };
+            }
+            else if (side == 1) {
+                perp_block_dist = side_dist_z - delta_dist_z;
+                current_block_looking.direction = { 0.0f, 0.0f, static_cast<float>(-step_z) };
+            }
+            else {
+                perp_block_dist = side_dist_y - delta_dist_y;
+                current_block_looking.direction = { 0.0f, static_cast<float>(-step_y), 0.0f };
+            }
 
             if (perp_block_dist <= reach) {
-                current_block = { static_cast<float>(map_x), static_cast<float>(map_y), static_cast<float>(map_z) };
+                current_block_looking.position = { static_cast<float>(map_x), static_cast<float>(map_y), static_cast<float>(map_z) };
                 return;
             }
             else num_blocks = 10;
@@ -247,5 +265,6 @@ void Player::UpdateCurrentBlock() {
     }
 
     // No block found
-    current_block = { 0.0f, 256.0f, 0.0f }; // arbitrary value player should never be able to reach
+    current_block_looking.position = { 0.0f, 256.0f, 0.0f }; // arbitrary value player should never be able to reach
+    current_block_looking.direction = { 0.0f, 0.0f, 0.0f };
 }

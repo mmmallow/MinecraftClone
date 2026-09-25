@@ -84,6 +84,18 @@ void World::SetBlock (Vector3 pos, Block block) {
     if (old_block != nullptr) {
         *old_block = block;
         chunk->dirty = true;
+        if (pos.x == chunk->position.x || pos.x == chunk->position.x + CHUNK_EDGE_LEN-1) {
+            int sign = pos.x == chunk->position.x ? -1 : 1;
+            auto neighbor_x = chunks.find(ChunkKey(chunk->grid_x+sign, chunk->grid_z));
+            if (neighbor_x != chunks.end())
+                neighbor_x->second->dirty = true;
+        }
+        if (pos.z == chunk->position.z || pos.z == chunk->position.z + CHUNK_EDGE_LEN-1) {
+            int sign = pos.z == chunk->position.z ? -1 : 1;
+            auto neighbor_z = chunks.find(ChunkKey(chunk->grid_x, chunk->grid_z+sign));
+            if (neighbor_z != chunks.end())
+                neighbor_z->second->dirty = true;
+        }
     }
 }
 
@@ -102,8 +114,8 @@ void World::Draw() {
             if (!c->has_mesh) continue;
             DrawMesh(c->mesh, chunk_material, MatrixTranslate(c->position.x, c->position.y, c->position.z));
         }
-        if (player.current_block.x != 0.0f && player.current_block.y != 256.0f && player.current_block.z != 0.0f)
-            DrawCubeWires(player.current_block, 1.0f, 1.0f, 1.0f, BLACK);
+        if (player.current_block_looking.position.x != 0.0f && player.current_block_looking.position.y != 256.0f && player.current_block_looking.position.z != 0.0f)
+            DrawCubeWires(player.current_block_looking.position, 1.0f, 1.0f, 1.0f, BLACK);
     EndMode3D();
 }
 
@@ -225,7 +237,7 @@ void World::Generate() {
     float lacunarity = 0.5f;
     float y_offset = 0;
 
-    const float FREQUENCY = 0.02f; // noise units per block
+    const float FREQUENCY = 0.03f; // noise units per block
     const int   BASE_Y    = 64;    // height a noise value of 0.5 maps to
     const int   AMPLITUDE = 32;    // how far terrain swings above/below BASE_Y
 
@@ -271,25 +283,8 @@ void World::Generate() {
 
                     // Generate trees
                     if (type == GRASS) {
-                        int random_num = rand() % (1000);
-                        if (random_num == 999) {
-                            /*int tree_height = rand() % (5 - 3 + 1) + 3;
-                            int half_tree = tree_height / 2;
-                            for (int i = 0; i < tree_height; i++) {
-                                c->SetFromWorld({ c->position.x + static_cast<float>(x),
-                                                static_cast<float>(surface_y+1+i),
-                                                c->position.z + static_cast<float>(z) }, LOG);
-                            }
-                            for (int i = half_tree; i < tree_height+1; i++) {
-                                int y = half_tree+surface_y+i;
-                                for (int dz = -2; dz <= 2; dz++) {
-                                    for (int dx = -2; dx <= 2; dx++) {
-                                        leaves.push_back({ c->position.x + x+dx,
-                                                           static_cast<float>(y),
-                                                           c->position.z + z+dz });
-                                    }
-                                }
-                            }*/
+                        int random_num = rand() % (900);
+                        if (random_num == 899) {
                             c->SetFromWorld({ c->position.x + static_cast<float>(x),
                                             static_cast<float>(surface_y+1),
                                             c->position.z + static_cast<float>(z) }, LOG);
@@ -300,7 +295,6 @@ void World::Generate() {
                                             static_cast<float>(surface_y+3),
                                             c->position.z + static_cast<float>(z) }, LOG);
 
-                            Vector3 branch_ends[3] = { 0 };
                             for (int i = 0; i < 3; i++) {
                                 Vector3 direction = {uniform_random(-1.0f, 1.0f), 1.0f, uniform_random(-1.0f, 1.0f)};
                                 Ray ray = { {c->position.x + static_cast<float>(x), static_cast<float>(surface_y+3), c->position.z + static_cast<float>(z)},
@@ -494,6 +488,8 @@ bool World::SolidAtWorld (int wx, int wy, int wz) {
     if (it == chunks.end()) return false;   // outside the generated world
 
     Chunk* c = it->second;
+    if (c == nullptr)
+        return false;
     int lx = PosMod(wx, CHUNK_EDGE_LEN);
     int lz = PosMod(wz, CHUNK_EDGE_LEN);
     return BlockIsSolid(c->data[lx + lz*CHUNK_EDGE_LEN + wy*CHUNK_AREA]);

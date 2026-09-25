@@ -26,7 +26,8 @@ public:
     Vector3 position;
     Vector3 velocity = { 0 };
     Vector3 dir = { 0 };
-    Vector3 current_block = { 0 };
+    Ray current_block_looking = { 0 }; // position == position of the block : direction == surface normal of side being looked at
+    Block current_block_held = GRASS;
     int reach = 5.5; // how many blocks player can reach
     std::time_t now;
 
