@@ -23,6 +23,7 @@ enum Block {
     LEAF,
     GLASS,
     PLANK,
+    WATER,
 
     NONE,
 };
@@ -86,6 +87,8 @@ inline bool BlockIsSolid (Block block) {
     if (block == AIR) {
         return false;
     }
+    else if (block == WATER)
+        return false;
 
     return true;
 }
@@ -97,8 +100,16 @@ inline bool BlockIsSeeThrough (Block block) {
         return true;
     else if (block == GLASS)
         return true;
+    else if (block == WATER)
+        return true;
 
     return false;
+}
+
+inline bool FaceVisible(Block self, Block neighbor) {
+    if (self == WATER) return neighbor == AIR;              // only the surface (and air pockets)
+    if (neighbor == self && self == GLASS) return false;    // no seams between glass panes
+    return BlockIsSeeThrough(neighbor);
 }
 
 inline BoundingBox GetBoundingBox (Vector3 position, Vector3 size) {

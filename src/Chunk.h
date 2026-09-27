@@ -30,7 +30,9 @@ public:
     Block* data;
 
     Mesh mesh = { 0 };
+    Mesh water_mesh = { 0 };
     bool has_mesh = false;
+    bool has_water_mesh = false;
     bool dirty = true;
 };
 

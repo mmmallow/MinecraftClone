@@ -26,6 +26,7 @@ public:
     bool SolidAtWorld(int wx, int wy, int wz);
     bool SeeThrough(Chunk* c, int x, int y, int z);
     bool SeeThroughAtWorld(int wx, int wy, int wz);
+    Block BlockAt(Chunk* c, int x, int y, int z);
     std::pair<Chunk*, Block*> GetBlockAtWorld(int wx, int wy, int wz);
     void SetBlock(Vector3 pos, Block block);
 
@@ -44,19 +45,25 @@ private:
 
     Texture2D texture_atlas;
     Material chunk_material;
+    Material water_material;
     std::unordered_map<Block, BlockTexture> block_textures;
 
     int seed;
     int next_chunk_id = 0;
 
+    int water_time_loc = 0;
 
 
     // Vectors for constructing chunk mesh
     std::vector<float> v; // positions: 3 per vertex
     std::vector<float> n; // normals:   3 per vertex
     std::vector<float> t; // texcoords: 2 per vertex
+    // Vectors for constructing chunk water mesh
+    std::vector<float> wv; // positions: 3 per vertex
+    std::vector<float> wn; // normals:   3 per vertex
+    std::vector<float> wt; // texcoords: 2 per vertex
 
-    void PushFace(const float p[4][3], const float nrm[3], float tx, float ty, float tw, float th);
+    void PushFace(const float p[4][3], const float nrm[3], float tx, float ty, float tw, float th, bool is_water);
     static float* ToRL(const std::vector<float>& vec);
     void RebuildMesh(Chunk* c);
     void BuildChunkMesh(Chunk* c);

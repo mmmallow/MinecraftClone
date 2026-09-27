@@ -14,8 +14,12 @@ World::World (Player& player, int seed)
     MapBlockTextures();
 
     chunk_material = LoadMaterialDefault();
+    water_material = LoadMaterialDefault();
     chunk_material.shader = LoadShader("assets/shaders/lighting.vs", "assets/shaders/lighting.fs");
+    water_material.shader = LoadShader("assets/shaders/water.vs", "assets/shaders/water.fs");
+    water_time_loc = GetShaderLocation(water_material.shader, "time");
     SetMaterialTexture(&chunk_material, MATERIAL_MAP_DIFFUSE, texture_atlas);
+    SetMaterialTexture(&water_material, MATERIAL_MAP_DIFFUSE, texture_atlas);
 
     Generate();
     player.cur_chunk = chunks.at(ChunkKey(0, 0));
@@ -33,7 +37,9 @@ void World::Destroy() {
     }
 
     UnloadShader(chunk_material.shader);
+    UnloadShader(water_material.shader);
     RL_FREE(chunk_material.maps);
+    RL_FREE(water_material.maps);
     UnloadTexture(texture_atlas);
 }
 
@@ -95,9 +101,19 @@ void World::Draw() {
         for (auto& pair : chunks) {
             Chunk* c = pair.second;
             if (c->dirty) RebuildMesh(c);
-            if (!c->has_mesh) continue;
-            DrawMesh(c->mesh, chunk_material, MatrixTranslate(c->position.x, c->position.y, c->position.z));
+            if (c->has_mesh)
+                DrawMesh(c->mesh, chunk_material, MatrixTranslate(c->position.x, c->position.y, c->position.z));
         }
+
+        float t = (float)GetTime();
+        SetShaderValue(water_material.shader, water_time_loc, &t, SHADER_UNIFORM_FLOAT);
+        rlDisableDepthMask();
+        for (auto& pair : chunks) {
+            Chunk* c = pair.second;
+            if (c->has_water_mesh)
+                DrawMesh(c->water_mesh, water_material, MatrixTranslate(c->position.x, c->position.y, c->position.z));
+        }
+        rlEnableDepthMask();
         if (player.current_block_looking.position.x != 0.0f && player.current_block_looking.position.y != 256.0f && player.current_block_looking.position.z != 0.0f)
             DrawCubeWires(player.current_block_looking.position, 1.0f, 1.0f, 1.0f, BLACK);
     EndMode3D();
@@ -176,6 +192,15 @@ void World::MapBlockTextures() {
                           {128.0f, 32.0f},
                           {128.0f, 32.0f},
                           {128.0f, 32.0f}
+    }});
+    block_textures.insert({WATER, {
+                          {32.0f, 32.0f},
+                          {0.0f, 64.0f},
+                          {0.0f, 64.0f},
+                          {0.0f, 64.0f},
+                          {0.0f, 64.0f},
+                          {0.0f, 64.0f},
+                          {0.0f, 64.0f}
     }});
 }
 
@@ -312,6 +337,15 @@ void World::Generate() {
                         }
                     }
 
+                    if (type == SAND) {
+                        int water_y = surface_y+1;
+                        while (water_y <= 60) {
+                            c->SetFromWorld({ c->position.x + static_cast<float>(x),
+                                            static_cast<float>(water_y++),
+                                            c->position.z + static_cast<float>(z) }, WATER);
+                        }
+                    }
+
                     // Fill chunk with blocks
                     for (int y = surface_y-1; y >= 0; y--) {
                         if (type == SAND) {
@@ -321,7 +355,7 @@ void World::Generate() {
                             c->SetFromWorld({ c->position.x + static_cast<float>(x),
                                             static_cast<float>(y--),
                                             c->position.z + static_cast<float>(z) }, type);
-                             c->SetFromWorld({ c->position.x + static_cast<float>(x),
+                            c->SetFromWorld({ c->position.x + static_cast<float>(x),
                                             static_cast<float>(y--),
                                             c->position.z + static_cast<float>(z) }, type);
                             type = DIRT;
@@ -440,15 +474,23 @@ std::string World::LSystem (std::string system, int count) {
 }
 
 
-void World::PushFace(const float p[4][3], const float nrm[3], float tx, float ty, float tw, float th) {
+void World::PushFace(const float p[4][3], const float nrm[3], float tx, float ty, float tw, float th, bool is_water) {
     const int tri[6] = {0,1,2, 0,2,3};
     const float uv[4][2] = {{tx, ty+th}, {tx+tw, ty+th}, {tx+tw, ty}, {tx, ty}};
     for (int i = 0; i < 6; i++) {
         int j = tri[i];
-        v.insert(v.end(), {p[j][0], p[j][1], p[j][2]});
-        n.insert(n.end(), {nrm[0], nrm[1], nrm[2]});
-        t.insert(t.end(), {uv[j][0]/(float)texture_atlas.width,
-                           uv[j][1]/(float)texture_atlas.height});
+        if (is_water) {
+            wv.insert(wv.end(), {p[j][0], p[j][1], p[j][2]});
+            wn.insert(wn.end(), {nrm[0], nrm[1], nrm[2]});
+            wt.insert(wt.end(), {uv[j][0]/(float)texture_atlas.width,
+                            uv[j][1]/(float)texture_atlas.height});
+        }
+        else {
+            v.insert(v.end(), {p[j][0], p[j][1], p[j][2]});
+            n.insert(n.end(), {nrm[0], nrm[1], nrm[2]});
+            t.insert(t.end(), {uv[j][0]/(float)texture_atlas.width,
+                            uv[j][1]/(float)texture_atlas.height});
+        }
     }
 }
 
@@ -462,24 +504,39 @@ void World::RebuildMesh (Chunk* c) {
     this->v.clear();
     this->n.clear();
     this->t.clear();
+    this->wv.clear();
+    this->wn.clear();
+    this->wt.clear();
     BuildChunkMesh(c);
     if (c->has_mesh) {
         UnloadMesh(c->mesh);
         c->mesh = (Mesh){0};
         c->has_mesh = false;
     }
-    if (this->v.empty()) {
-        c->dirty = false;
-        return;
+    if (c->has_water_mesh) {
+        UnloadMesh(c->water_mesh);
+        c->water_mesh = (Mesh){0};
+        c->has_water_mesh = false;
     }
 
-    c->mesh.vertexCount = (int)(this->v.size()/3);
-    c->mesh.triangleCount = c->mesh.vertexCount / 3;
-    c->mesh.vertices = ToRL(this->v);
-    c->mesh.normals = ToRL(this->n);
-    c->mesh.texcoords = ToRL(this->t);
-    UploadMesh(&c->mesh, false);
-    c->has_mesh = true;
+    if (!this->v.empty()) {
+        c->mesh.vertexCount = (int)(this->v.size()/3);
+        c->mesh.triangleCount = c->mesh.vertexCount / 3;
+        c->mesh.vertices = ToRL(this->v);
+        c->mesh.normals = ToRL(this->n);
+        c->mesh.texcoords = ToRL(this->t);
+        UploadMesh(&c->mesh, false);
+        c->has_mesh = true;
+    }
+    if (!this->wv.empty()) {
+        c->water_mesh.vertexCount = (int)(this->wv.size()/3);
+        c->water_mesh.triangleCount = c->water_mesh.vertexCount / 3;
+        c->water_mesh.vertices = ToRL(this->wv);
+        c->water_mesh.normals = ToRL(this->wn);
+        c->water_mesh.texcoords = ToRL(this->wt);
+        UploadMesh(&c->water_mesh, false);
+        c->has_water_mesh = true;
+    }
     c->dirty = false;
 }
 
@@ -534,6 +591,19 @@ bool World::SeeThroughAtWorld (int wx, int wy, int wz) {
     return BlockIsSeeThrough(c->data[lx + lz*CHUNK_EDGE_LEN + wy*CHUNK_AREA]);
 }
 
+// Block at chunk-local coords, looking into neighbouring chunks
+Block World::BlockAt (Chunk* c, int x, int y, int z) {
+    if (y < 0 || y >= CHUNK_Y_LEN) return AIR;
+
+    if (x >= 0 && x < CHUNK_EDGE_LEN && z >= 0 && z < CHUNK_EDGE_LEN)
+        return c->data[x + z*CHUNK_EDGE_LEN + y*CHUNK_AREA];
+
+    auto result = GetBlockAtWorld(c->grid_x * CHUNK_EDGE_LEN + x,
+                                  y,
+                                  c->grid_z * CHUNK_EDGE_LEN + z);
+    return result.second ? *result.second : AIR;
+}
+
 std::pair<Chunk*, Block*> World::GetBlockAtWorld (int wx, int wy, int wz) {
     std::pair<Chunk*, Block*> result(nullptr, nullptr);
     if (wy < 0 || wy >= CHUNK_Y_LEN) return result;
@@ -557,41 +627,42 @@ void World::BuildChunkMesh (Chunk* c) {
         for (int z = 0; z < CHUNK_EDGE_LEN; z++) {
             for (int x = 0; x < CHUNK_EDGE_LEN; x++, i++) {
                 Block block = c->data[i];
-                if (!BlockIsSolid(block)) continue;
+                if (block == AIR) continue;
+                const bool is_water = (block == WATER);
 
                 BlockTexture bt = block_textures[block];
                 const float cx = x, cy = y, cz = z, h = 0.5f;
                 const float tw = bt.size.x, th = bt.size.y;
 
-                if (SeeThrough(c, x, y, z + 1)) {   // front (+Z)
+                if (FaceVisible(block, BlockAt(c, x, y, z + 1))) {   // front (+Z)
                     float p[4][3] = {{cx-h,cy-h,cz+h},{cx+h,cy-h,cz+h},{cx+h,cy+h,cz+h},{cx-h,cy+h,cz+h}};
                     float nrm[3] = {0.0f, 0.0f, 1.0f};
-                    PushFace(p, nrm, bt.front.x, bt.front.y, tw, th);
+                    PushFace(p, nrm, bt.front.x, bt.front.y, tw, th, is_water);
                 }
-                if (SeeThrough(c, x, y, z - 1)) {   // back (-Z)
+                if (FaceVisible(block, BlockAt(c, x, y, z - 1))) {   // back (-Z)
                     float p[4][3] = {{cx+h,cy-h,cz-h},{cx-h,cy-h,cz-h},{cx-h,cy+h,cz-h},{cx+h,cy+h,cz-h}};
                     float nrm[3] = {0.0f, 0.0f, -1.0f};
-                    PushFace(p, nrm, bt.back.x, bt.back.y, tw, th);
+                    PushFace(p, nrm, bt.back.x, bt.back.y, tw, th, is_water);
                 }
-                if (SeeThrough(c, x, y + 1, z)) {   // top (+Y)
+                if (FaceVisible(block, BlockAt(c, x, y + 1, z))) {   // top (+Y)
                     float p[4][3] = {{cx-h,cy+h,cz+h},{cx+h,cy+h,cz+h},{cx+h,cy+h,cz-h},{cx-h,cy+h,cz-h}};
                     float nrm[3] = {0.0f, 1.0f, 0.0f};
-                    PushFace(p, nrm, bt.top.x, bt.top.y, tw, th);
+                    PushFace(p, nrm, bt.top.x, bt.top.y, tw, th, is_water);
                 }
-                if (SeeThrough(c, x, y - 1, z)) {   // bottom (-Y)
+                if (FaceVisible(block, BlockAt(c, x, y - 1, z))) {   // bottom (-Y)
                     float p[4][3] = {{cx-h,cy-h,cz-h},{cx+h,cy-h,cz-h},{cx+h,cy-h,cz+h},{cx-h,cy-h,cz+h}};
                     float nrm[3] = {0.0f, -1.0f, 0.0f};
-                    PushFace(p, nrm, bt.bottom.x, bt.bottom.y, tw, th);
+                    PushFace(p, nrm, bt.bottom.x, bt.bottom.y, tw, th, is_water);
                 }
-                if (SeeThrough(c, x + 1, y, z)) {   // right (+X)
+                if (FaceVisible(block, BlockAt(c, x + 1, y, z))) {   // right (+X)
                     float p[4][3] = {{cx+h,cy-h,cz+h},{cx+h,cy-h,cz-h},{cx+h,cy+h,cz-h},{cx+h,cy+h,cz+h}};
                     float nrm[3] = {1.0f, 0.0f, 0.0f};
-                    PushFace(p, nrm, bt.right.x, bt.right.y, tw, th);
+                    PushFace(p, nrm, bt.right.x, bt.right.y, tw, th, is_water);
                 }
-                if (SeeThrough(c, x - 1, y, z)) {   // left (-X)
+                if (FaceVisible(block, BlockAt(c, x - 1, y, z))) {   // left (-X)
                     float p[4][3] = {{cx-h,cy-h,cz-h},{cx-h,cy-h,cz+h},{cx-h,cy+h,cz+h},{cx-h,cy+h,cz-h}};
                     float nrm[3] = {-1.0f, 0.0f, 0.0f};
-                    PushFace(p, nrm, bt.left.x, bt.left.y, tw, th);
+                    PushFace(p, nrm, bt.left.x, bt.left.y, tw, th, is_water);
                 }
             }
         }
