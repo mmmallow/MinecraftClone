@@ -3,6 +3,7 @@
 
 #include "common.hpp"
 #include <raylib.h>
+#include <string>
 
 inline unsigned long long ChunkKey(int grid_x, int grid_z) {
     unsigned long long ux = static_cast<unsigned int>(grid_x);
@@ -13,6 +14,7 @@ inline unsigned long long ChunkKey(int grid_x, int grid_z) {
 class Chunk {
 public:
     Chunk(int grid_x, int grid_z);
+    Chunk(int grid_x, int grid_z, std::string file_path); // load chunk from file
     ~Chunk();
     void Destroy();
 
@@ -23,11 +25,13 @@ public:
 
     Vector3 ToLocal(Vector3 world) const;
 
+    void Serialize(std::string file_path);
+
     int grid_x;
     int grid_z;
     Vector3 position;
 
-    Block* data;
+    Block* data = nullptr;
 
     Mesh mesh = { 0 };
     Mesh water_mesh = { 0 };

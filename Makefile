@@ -6,6 +6,7 @@ all: $(BIN)
 
 bin:
 	mkdir -p $(BIN)
+	mkdir -p data
 	cd $(BIN) && cmake ../
 
 run: all
@@ -13,9 +14,11 @@ run: all
 
 clean:
 	rm $(BIN)/${EXE}
+	rm data/*
 
 wipe:
 	rm -rf $(BIN)
+	rm -rf data
 
 db: all
 	gdb ./$(BIN)/${EXE}

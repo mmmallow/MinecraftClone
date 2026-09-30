@@ -5,10 +5,12 @@
 #include <iostream>
 #include <cstring>
 #include <cmath>
+#include <algorithm>
 
 World::World (Player& player, int seed)
 : player (player),
-  seed (seed)
+  seed (seed),
+  map (depth, std::vector<float>(width))
 {
     texture_atlas = LoadTexture("assets/tex_atlas.png");
     MapBlockTextures();
@@ -21,8 +23,11 @@ World::World (Player& player, int seed)
     SetMaterialTexture(&chunk_material, MATERIAL_MAP_DIFFUSE, texture_atlas);
     SetMaterialTexture(&water_material, MATERIAL_MAP_DIFFUSE, texture_atlas);
 
-    Generate();
-    player.cur_chunk = chunks.at(ChunkKey(0, 0));
+    GenerateMap();
+    GenerateChunk(8, 8);
+    player.cur_chunk = current_chunks.at(ChunkKey(8, 8));
+    player.position = { 136.0f, 90.0f, 136.0f };
+    LoadChunks();
 }
 
 World::~World() {
@@ -30,8 +35,9 @@ World::~World() {
 }
 
 void World::Destroy() {
-    for (auto& pair : chunks) {
+    for (auto& pair : current_chunks) {
         if (pair.second->has_mesh) UnloadMesh(pair.second->mesh);
+        if (pair.second->has_water_mesh) UnloadMesh(pair.second->water_mesh);
         pair.second->Destroy();
         delete pair.second;
     }
@@ -46,7 +52,8 @@ void World::Destroy() {
 
 void World::Update() {
     player.Update(GetFrameTime());
-    CheckPlayerNewChunk();
+    if (CheckPlayerNewChunk())
+        LoadChunks();
 
     if (!player.is_freecam) {
         int n = 2; // radius
@@ -76,14 +83,14 @@ void World::SetBlock (Vector3 pos, Block block) {
         chunk->dirty = true;
         if (pos.x == chunk->position.x || pos.x == chunk->position.x + CHUNK_EDGE_LEN-1) {
             int sign = pos.x == chunk->position.x ? -1 : 1;
-            auto neighbor_x = chunks.find(ChunkKey(chunk->grid_x+sign, chunk->grid_z));
-            if (neighbor_x != chunks.end())
+            auto neighbor_x = current_chunks.find(ChunkKey(chunk->grid_x+sign, chunk->grid_z));
+            if (neighbor_x != current_chunks.end())
                 neighbor_x->second->dirty = true;
         }
         if (pos.z == chunk->position.z || pos.z == chunk->position.z + CHUNK_EDGE_LEN-1) {
             int sign = pos.z == chunk->position.z ? -1 : 1;
-            auto neighbor_z = chunks.find(ChunkKey(chunk->grid_x, chunk->grid_z+sign));
-            if (neighbor_z != chunks.end())
+            auto neighbor_z = current_chunks.find(ChunkKey(chunk->grid_x, chunk->grid_z+sign));
+            if (neighbor_z != current_chunks.end())
                 neighbor_z->second->dirty = true;
         }
     }
@@ -98,7 +105,7 @@ void World::Draw() {
         else
             rlDisableWireMode();
 
-        for (auto& pair : chunks) {
+        for (auto& pair : current_chunks) {
             Chunk* c = pair.second;
             if (c->dirty) RebuildMesh(c);
             if (c->has_mesh)
@@ -108,7 +115,7 @@ void World::Draw() {
         float t = (float)GetTime();
         SetShaderValue(water_material.shader, water_time_loc, &t, SHADER_UNIFORM_FLOAT);
         rlDisableDepthMask();
-        for (auto& pair : chunks) {
+        for (auto& pair : current_chunks) {
             Chunk* c = pair.second;
             if (c->has_water_mesh)
                 DrawMesh(c->water_mesh, water_material, MatrixTranslate(c->position.x, c->position.y, c->position.z));
@@ -193,6 +200,7 @@ void World::MapBlockTextures() {
                           {128.0f, 32.0f},
                           {128.0f, 32.0f}
     }});
+
     block_textures.insert({WATER, {
                           {32.0f, 32.0f},
                           {0.0f, 64.0f},
@@ -235,19 +243,69 @@ void World::CheckCollisions (Vector3 block) {
 }
 
 
-void World::CheckPlayerNewChunk() {
+bool World::CheckPlayerNewChunk() {
     int gx = FloorDiv(static_cast<int>(std::floor(player.position.x)), CHUNK_EDGE_LEN);
     int gz = FloorDiv(static_cast<int>(std::floor(player.position.z)), CHUNK_EDGE_LEN);
 
     if (player.cur_chunk != nullptr &&
         player.cur_chunk->grid_x == gx && player.cur_chunk->grid_z == gz)
-        return;
+        return false;
 
-    auto it = chunks.find(ChunkKey(gx, gz));
-    if (it != chunks.end()) player.cur_chunk = it->second;
+    auto it = current_chunks.find(ChunkKey(gx, gz));
+    if (it != current_chunks.end()) {
+        player.cur_chunk = it->second;
+        return true;
+    }
+
+    return false;
 }
 
-void World::Generate() {
+void World::LoadChunks() {
+    UnloadChunks();
+
+    Chunk* cur = player.cur_chunk;
+    for (int z = cur->grid_z - player.chunk_radius; z < cur->grid_z + player.chunk_radius; z++) {
+        for (int x = cur->grid_x - player.chunk_radius; x < cur->grid_x + player.chunk_radius; x++) {
+
+            auto it = current_chunks.find(ChunkKey(x, z));
+
+            if (it == current_chunks.end()) {
+                auto map_it = chunks.find(ChunkKey(x, z));
+                if (map_it != chunks.end()) {
+                    if (map_it->second == true) {
+                        std::string file_path = "data/" + std::to_string(x) + "-" + std::to_string(z) + ".dat";
+                        current_chunks.insert({ChunkKey(x, z), new Chunk(x, z, file_path)});
+                    }
+                    else {
+                        GenerateChunk(x, z);
+                    }
+                }
+            }
+        }
+    }
+}
+
+void World::UnloadChunks() {
+    Chunk* cur = player.cur_chunk;
+    for (auto it = current_chunks.begin(); it != current_chunks.end(); ) {
+        Chunk* c = it->second;
+        if (c->grid_x > player.chunk_radius + cur->grid_x || c->grid_x < cur->grid_x - player.chunk_radius || c->grid_z > player.chunk_radius + cur->grid_z || c->grid_z < cur->grid_z - player.chunk_radius) {
+            c->Serialize("data/" + std::to_string(c->grid_x) + "-" + std::to_string(c->grid_z) + ".dat");
+
+            if (c->has_mesh) UnloadMesh(c->mesh);
+            if (c->has_water_mesh) UnloadMesh(c->water_mesh);
+            c->Destroy();
+            delete c;
+
+            it = current_chunks.erase(it);
+        }
+        else {
+            ++it;
+        }
+    }
+}
+
+void World::GenerateMap() {
     if (seed == 0) {
         std::srand(std::time(0));
         seed = std::rand();
@@ -257,129 +315,119 @@ void World::Generate() {
     PerlinNoise perlin { seed };
     srand(seed);
 
-    // Generate height map
-    int width = 16;
-    int height = 16;
     float persistence = 0.5f;
     float lacunarity = 0.5f;
     float y_offset = 0;
 
     const float FREQUENCY = 0.03f; // noise units per block
+
+    for (int z = 0; z < depth; z++) {
+        for (int x = 0; x < width; x++) {
+            float nx = static_cast<float>(x) * FREQUENCY;
+            float nz = static_cast<float>(z) * FREQUENCY;
+
+            map[z][x] = perlin.FractalNoise(nx, nz, y_offset,
+                                            octaves, persistence, lacunarity);
+
+            if (z % CHUNK_EDGE_LEN == 0 && x % CHUNK_EDGE_LEN == 0)
+                chunks.insert({ChunkKey(z / CHUNK_EDGE_LEN, x / CHUNK_EDGE_LEN), false});
+        }
+    }
+}
+
+void World::GenerateChunk (int grid_x, int grid_z) {
     const int   BASE_Y    = 64;    // height a noise value of 0.5 maps to
     const int   AMPLITUDE = 32;    // how far terrain swings above/below BASE_Y
-
-    int chunk_x = 0;
-    int chunk_z = 0;
-
 
     std::vector<Vector3> leaves;
     std::vector<Vector3> logs;
 
-    for (chunk_z = 0; chunk_z < height; chunk_z++) {
-        for (chunk_x = 0; chunk_x < width; chunk_x++) {
-            Chunk* c = new Chunk(chunk_x, chunk_z);
-            chunks.insert({ChunkKey(c->grid_x, c->grid_z), c});
+    Chunk* c = new Chunk(grid_x, grid_z);
+    current_chunks.insert({ChunkKey(grid_x, grid_z), c});
+    auto it = chunks.find(ChunkKey(grid_x, grid_z));
+    if (it != chunks.end()) it->second = true;
+    else return;
 
-            std::vector<std::vector<float>> map(height, std::vector<float>(width));
+    int middle_y = BASE_Y;
+    for (int z = grid_z * CHUNK_EDGE_LEN; z < grid_z * CHUNK_EDGE_LEN + CHUNK_EDGE_LEN; z++) {
+        for (int x = grid_x * CHUNK_EDGE_LEN; x < grid_x * CHUNK_EDGE_LEN + CHUNK_EDGE_LEN; x++) {
+            // Generate surface blocks
+            int surface_y = BASE_Y + static_cast<int>((map[z][x] - 0.5f) * 2.0f * AMPLITUDE);
+            Block type = GRASS;
+            if (surface_y < 20) {
+                type = STONE;
+            }
+            else if (surface_y < 60) {
+                type = SAND;
+            }
+            c->SetFromWorld({ static_cast<float>(x),
+                            static_cast<float>(surface_y),
+                            static_cast<float>(z) }, type);
 
-            for (int z = 0; z < height; z++) {
-                for (int x = 0; x < width; x++) {
-                    float nx = (c->position.x + static_cast<float>(x)) * FREQUENCY;
-                    float nz = (c->position.z + static_cast<float>(z)) * FREQUENCY;
+            // Generate trees
+            if (type == GRASS) {
+                int random_num = rand() % (900);
+                if (random_num == 899) {
+                    c->SetFromWorld({static_cast<float>(x),
+                                    static_cast<float>(surface_y+1),
+                                    static_cast<float>(z) }, LOG);
+                    c->SetFromWorld({ static_cast<float>(x),
+                                    static_cast<float>(surface_y+2),
+                                    static_cast<float>(z) }, LOG);
+                    c->SetFromWorld({ static_cast<float>(x),
+                                    static_cast<float>(surface_y+3),
+                                    static_cast<float>(z) }, LOG);
 
-                    map[z][x] = perlin.FractalNoise(nx, nz, y_offset,
-                                                    octaves, persistence, lacunarity);
+                    for (int i = 0; i < 3; i++) {
+                        Vector3 direction = {uniform_random(-1.0f, 1.0f), 1.0f, uniform_random(-1.0f, 1.0f)};
+                        Ray ray = { {static_cast<float>(x), static_cast<float>(surface_y+3), static_cast<float>(z)},
+                                    Vector3Normalize(direction)};
+                        auto vec = TreeGen(ray);
+                        logs.insert(logs.end(), vec.begin(), vec.end());
+
+                        auto leaf = LeafGen(logs.back());
+                        leaves.insert(leaves.end(), leaf.begin(), leaf.end());
+                    }
+
+
                 }
             }
 
-            int middle_y = BASE_Y;
-            for (int z = 0; z < CHUNK_EDGE_LEN; z++) {
-                for (int x = 0; x < CHUNK_EDGE_LEN; x++) {
-                    // Generate surface blocks
-                    int surface_y = BASE_Y + static_cast<int>((map[z][x] - 0.5f) * 2.0f * AMPLITUDE);
-                    Block type = GRASS;
-                    if (surface_y < 20) {
-                        type = STONE;
-                    }
-                    else if (surface_y < 60) {
-                        type = SAND;
-                    }
-                    c->SetFromWorld({ c->position.x + static_cast<float>(x),
-                                    static_cast<float>(surface_y),
-                                    c->position.z + static_cast<float>(z) }, type);
-
-                    // Generate trees
-                    if (type == GRASS) {
-                        int random_num = rand() % (900);
-                        if (random_num == 899) {
-                            c->SetFromWorld({ c->position.x + static_cast<float>(x),
-                                            static_cast<float>(surface_y+1),
-                                            c->position.z + static_cast<float>(z) }, LOG);
-                            c->SetFromWorld({ c->position.x + static_cast<float>(x),
-                                            static_cast<float>(surface_y+2),
-                                            c->position.z + static_cast<float>(z) }, LOG);
-                            c->SetFromWorld({ c->position.x + static_cast<float>(x),
-                                            static_cast<float>(surface_y+3),
-                                            c->position.z + static_cast<float>(z) }, LOG);
-
-                            for (int i = 0; i < 3; i++) {
-                                Vector3 direction = {uniform_random(-1.0f, 1.0f), 1.0f, uniform_random(-1.0f, 1.0f)};
-                                Ray ray = { {c->position.x + static_cast<float>(x), static_cast<float>(surface_y+3), c->position.z + static_cast<float>(z)},
-                                            Vector3Normalize(direction)};
-                                auto vec = TreeGen(ray);
-                                logs.insert(logs.end(), vec.begin(), vec.end());
-
-                                auto leaf = LeafGen(logs.back());
-                                leaves.insert(leaves.end(), leaf.begin(), leaf.end());
-                            }
-
-
-                        }
-                    }
-
-                    if (type == SAND) {
-                        int water_y = surface_y+1;
-                        while (water_y <= 60) {
-                            c->SetFromWorld({ c->position.x + static_cast<float>(x),
-                                            static_cast<float>(water_y++),
-                                            c->position.z + static_cast<float>(z) }, WATER);
-                        }
-                    }
-
-                    // Fill chunk with blocks
-                    for (int y = surface_y-1; y >= 0; y--) {
-                        if (type == SAND) {
-                            c->SetFromWorld({ c->position.x + static_cast<float>(x),
-                                            static_cast<float>(y--),
-                                            c->position.z + static_cast<float>(z) }, type);
-                            c->SetFromWorld({ c->position.x + static_cast<float>(x),
-                                            static_cast<float>(y--),
-                                            c->position.z + static_cast<float>(z) }, type);
-                            c->SetFromWorld({ c->position.x + static_cast<float>(x),
-                                            static_cast<float>(y--),
-                                            c->position.z + static_cast<float>(z) }, type);
-                            type = DIRT;
-                        }
-                        if (y < 22) {
-                            type = STONE;
- 
-                        }
-                        else type = DIRT;
-                        c->SetFromWorld({ c->position.x + static_cast<float>(x),
-                                        static_cast<float>(y),
-                                        c->position.z + static_cast<float>(z) }, type);
-                    }
-
-                    if (z == CHUNK_EDGE_LEN / 2 && x == CHUNK_EDGE_LEN / 2)
-                        middle_y = surface_y;
+            if (type == SAND) {
+                int water_y = surface_y+1;
+                while (water_y <= 60) {
+                    c->SetFromWorld({ static_cast<float>(x),
+                                    static_cast<float>(water_y++),
+                                    static_cast<float>(z) }, WATER);
                 }
             }
 
-            if (chunk_z == height / 2 && chunk_x == width / 2) {
-                player.position.x = chunk_x * width + CHUNK_EDGE_LEN / 2;
-                player.position.y = middle_y + 10.0f;
-                player.position.z = chunk_z * height + CHUNK_EDGE_LEN / 2;
+            // Fill chunk with blocks
+            for (int y = surface_y-1; y >= 0; y--) {
+                if (type == SAND) {
+                    c->SetFromWorld({ static_cast<float>(x),
+                                    static_cast<float>(y--),
+                                    static_cast<float>(z) }, type);
+                    c->SetFromWorld({ static_cast<float>(x),
+                                    static_cast<float>(y--),
+                                    static_cast<float>(z) }, type);
+                    c->SetFromWorld({ static_cast<float>(x),
+                                    static_cast<float>(y--),
+                                    static_cast<float>(z) }, type);
+                    type = DIRT;
+                }
+                if (y < 22) {
+                    type = STONE;
+
+                }
+                else type = DIRT;
+                c->SetFromWorld({ static_cast<float>(x),
+                                static_cast<float>(y),
+                                static_cast<float>(z) }, type);
             }
+
+            if (z == CHUNK_EDGE_LEN / 2 && x == CHUNK_EDGE_LEN / 2)
+                middle_y = surface_y;
         }
     }
 
@@ -555,9 +603,9 @@ bool World::Solid (Chunk* c, int x, int y, int z) {
 bool World::SolidAtWorld (int wx, int wy, int wz) {
     if (wy < 0 || wy >= CHUNK_Y_LEN) return false;
 
-    auto it = chunks.find(ChunkKey(FloorDiv(wx, CHUNK_EDGE_LEN),
+    auto it = current_chunks.find(ChunkKey(FloorDiv(wx, CHUNK_EDGE_LEN),
                                    FloorDiv(wz, CHUNK_EDGE_LEN)));
-    if (it == chunks.end()) return false;   // outside the generated world
+    if (it == current_chunks.end()) return false;   // outside the generated world
 
     Chunk* c = it->second;
     if (c == nullptr)
@@ -581,9 +629,9 @@ bool World::SeeThrough (Chunk* c, int x, int y, int z) {
 bool World::SeeThroughAtWorld (int wx, int wy, int wz) {
     if (wy < 0 || wy >= CHUNK_Y_LEN) return true;
 
-    auto it = chunks.find(ChunkKey(FloorDiv(wx, CHUNK_EDGE_LEN),
+    auto it = current_chunks.find(ChunkKey(FloorDiv(wx, CHUNK_EDGE_LEN),
                                    FloorDiv(wz, CHUNK_EDGE_LEN)));
-    if (it == chunks.end()) return true;   // outside the generated world
+    if (it == current_chunks.end()) return true;   // outside the generated world
 
     Chunk* c = it->second;
     int lx = PosMod(wx, CHUNK_EDGE_LEN);
@@ -608,9 +656,9 @@ std::pair<Chunk*, Block*> World::GetBlockAtWorld (int wx, int wy, int wz) {
     std::pair<Chunk*, Block*> result(nullptr, nullptr);
     if (wy < 0 || wy >= CHUNK_Y_LEN) return result;
 
-    auto it = chunks.find(ChunkKey(FloorDiv(wx, CHUNK_EDGE_LEN),
+    auto it = current_chunks.find(ChunkKey(FloorDiv(wx, CHUNK_EDGE_LEN),
                                    FloorDiv(wz, CHUNK_EDGE_LEN)));
-    if (it == chunks.end()) return result;   // outside the generated world
+    if (it == current_chunks.end()) return result;   // outside the generated world
 
     Chunk* c = it->second;
     int lx = PosMod(wx, CHUNK_EDGE_LEN);

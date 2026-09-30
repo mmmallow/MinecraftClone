@@ -31,25 +31,31 @@ public:
     void SetBlock(Vector3 pos, Block block);
 
 private:
-    void Generate();
+    void GenerateMap();
+    void GenerateChunk(int grid_x, int grid_z);
     std::vector<Vector3> TreeGen(Ray ray);
     std::vector<Vector3> LeafGen(Vector3 center);
     std::string LSystem(std::string system, int count);
 
     void CheckCollisions(Vector3 block);
     void MapBlockTextures();
-    void CheckPlayerNewChunk();
+    bool CheckPlayerNewChunk();
+    void LoadChunks();
+    void UnloadChunks();
+
+    int seed;
+    int width = 512;
+    int depth = 512;
 
     Player& player;
-    std::unordered_map<unsigned long long, Chunk*> chunks; // keyed by ChunkKey(grid_x, grid_z)
+    std::unordered_map<unsigned long long, bool> chunks; // keyed by ChunkKey(grid_x, grid_z), value is if chunk has been generated
+    std::unordered_map<unsigned long long, Chunk*> current_chunks;
+    std::vector<std::vector<float>> map;
 
     Texture2D texture_atlas;
     Material chunk_material;
     Material water_material;
     std::unordered_map<Block, BlockTexture> block_textures;
-
-    int seed;
-    int next_chunk_id = 0;
 
     int water_time_loc = 0;
 

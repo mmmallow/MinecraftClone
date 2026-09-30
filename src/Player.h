@@ -33,6 +33,7 @@ public:
 
     World* world = nullptr;
     Chunk* cur_chunk = nullptr;
+    int chunk_radius = 8;
 
     const float MAX_SPEED = 20.0f;
     const float JUMP_FORCE = 10.0f;
